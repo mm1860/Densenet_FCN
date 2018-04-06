@@ -35,6 +35,10 @@ class DenseNet(object):
 
         self._custom_summries = {}
         self._act_summaries = []
+        self._image_summaries = []
+        self._layers = {}
+        self._losses = {}
+        self._metrics_2D = {}
 
     def _unit_layer(self, tensor_in:tf.Tensor, out_channels, kernel_size, name, training=True):
         if isinstance(out_channels, float):
@@ -77,86 +81,125 @@ class DenseNet(object):
         raise NotImplementedError
 
     def _add_summaries(self):
-        # trainable variables
-        for var in tf.trainable_variables():
-            tf.summary.histogram('Trainable/' + var.op.name, var)
+        self.val_summaries = []
+        with tf.device("/cpu:0"):
+            # trainable variables
+            for var in tf.trainable_variables():
+                tf.summary.histogram('Trainable/' + var.op.name, var)
 
-        # denseblock output
-        for out in self._act_summaries:
-            tf.summary.histogram('Activation/' + out.op.name, out)
+            # denseblock output
+            for out in self._act_summaries:
+                tf.summary.histogram('Activation/' + out.op.name, out)
 
-        # custom summries
-        for key in self._custom_summries:
-            tf.summary.histogram('Custom/' + key, self._custom_summries[key])
+            # custom summries
+            for key in self._custom_summries:
+                tf.summary.histogram('Custom/' + key, self._custom_summries[key])
 
-        # add image summaries
-        tf.summary.image("Image/" + self._image.op.name, self._image)
-        tf.summary.image("Image/" + self._mask.op.name, self._mask)
+            # add image summaries
+            for image in self._image_summaries:
+                self.val_summaries.append(tf.summary.image("Image/" + image.op.name, image))
 
-    def _metric_dice(self, logits, labels, eps=1e-5):
+            # add losses
+            for key, var in self._losses.items():
+                self.val_summaries.append(tf.summary.scalar(key, var))
+
+    def _metric_dice(self, logits:tf.Tensor, labels, eps=1e-5, name=None):
         """ Dice coefficient
         """
-        logits = tf.cast(logits, tf.bool)
-        labels = tf.cast(labels, tf.bool)
-        
-        intersection = tf.reduce_sum(tf.cast(tf.logical_and(logits, labels), tf.float32), axis=[1,2,3])
-        left = tf.reduce_sum(tf.cast(logits * logits, tf.float32), axis=[1,2,3])
-        right = tf.reduce_sum(tf.cast(labels * labels, tf.float32), axis=[1,2,3])
-        dice = (2 * intersection) / (left + right + eps)
+        dim = len(logits.get_shape())
+        sum_axis = list(range(1, dim))
+        with tf.variable_scope(name, "Dice"):
+            logits = tf.cast(logits, tf.float32)
+            labels = tf.cast(labels, tf.float32)
+            
+            intersection = tf.reduce_sum(logits * labels, axis=sum_axis)
+            left = tf.reduce_sum(logits, axis=sum_axis) ** 2
+            right = tf.reduce_sum(labels, axis=sum_axis) ** 2
+            dice = (2 * intersection) / (left + right + eps)
 
         return dice
 
-    def _metric_VOE(self, logits, labels, eps=1e-5):
+    def _metric_VOE(self, logits, labels, eps=1e-5, name=None):
         """ Volumetric Overlap Error
 
         numerator / denominator
         """
-        logits = tf.cast(logits, tf.bool)
-        labels = tf.cast(labels, tf.bool)
+        dim = len(logits.get_shape())
+        sum_axis = list(range(1, dim))
+        with tf.variable_scope(name, "VOE"):
+            logits = tf.cast(logits, tf.float32)
+            labels = tf.cast(labels, tf.float32)
 
-        nume = tf.reduce_sum(tf.cast(tf.logical_and(logits, labels), tf.float32), axis=[1,2,3])
-        deno = tf.reduce_sum(tf.cast(tf.logical_or(logits, labels), tf.float32), axis=[1,2,3])
-        voe = 100 * (1 - nume / (deno + eps))
+            nume = tf.reduce_sum(logits * labels, axis=sum_axis)
+            deno = tf.reduce_sum(tf.clip_by_value(logits + labels, 0., 1.), axis=sum_axis)
+            voe = 100 * (1. - nume / (deno + eps))
 
         return voe
 
-    def _metric_VD(self, logits, labels, eps=1e-5):
+    def _metric_VD(self, logits, labels, eps=1e-5, name=None):
         """ Relative Volume Difference
 
         Since the measure is not symmetric, it is no metric. 
         """
-        logits = tf.cast(logits, tf.float32)
-        labels = tf.cast(labels, tf.float32)
+        dim = len(logits.get_shape())
+        sum_axis = list(range(1, dim))
+        with tf.variable_scope(name, "VD"):
+            logits = tf.cast(logits, tf.float32)
+            labels = tf.cast(labels, tf.float32)
 
-        A = tf.reduce_sum(logits, axis=[1,2,3])
-        B = tf.reduce_sum(labels, axis=[1,2,3])
-        vd = 100 * (tf.abs(A - B) / (B + eps))
+            A = tf.reduce_sum(logits, axis=sum_axis)
+            B = tf.reduce_sum(labels, axis=sum_axis)
+            vd = 100 * (tf.abs(A - B) / (B + eps))
 
         return vd
 
-    def _metric_ASD(self, logtis, labels, eps=1e-5)
+    def _metric_ASD(self, logtis3D, labels3D, eps=1e-5)
         """ Average Symmetric Surface Distance
         """
         raise NotImplementedError
 
-    def _metric_RMSD(self, logits, labels, eps=1e-5):
+    def _metric_RMSD(self, logits3D, labels3D, eps=1e-5):
         """ Root Mean Square Symmetric Surface Distance
         """
         raise NotImplementedError
 
-    def _metric_MSD(self, logits, labels, eps=1e-5):
+    def _metric_MSD(self, logits3D, labels3D, eps=1e-5):
         """ Maximum Symmetric Surface Distance
         """
         raise NotImplementedError
 
-    def _add_losses(self):
-        pass
+    def _add_2D_metries(self, name=None):
+        logits = self._layers["binary_tensor_out"]
+        labels = self._mask
+        with tf.vairable_scope(name, "Metries_2D"):
+            dice = self._metric_dice(logits, labels)
+            voe = self._metric_VOE(logits, labels)
+            vd = self._metric_VD(logits, labels)
 
-    def create_architecture(self, mode):
+        self._metrics_2D["Dice"] = dice
+        self._metrics_2D["VOE"] = voe
+        self._metrics_2D["VD"] = vd
+
+
+    def _add_losses(self, name=None):
+        with tf.variable_scope(name, "Loss"):
+            labels = tf.reshape(self._mask, shape=self._mask.shape[:-1])
+            logits = self._layers["logits"]
+            cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels, logits)
+            self._losses["cross_entropy"] = cross_entropy
+
+            regularization_losses = tf.add_n(tf.losses.get_regularization_losses(), "Regu")
+            self._losses["total_loss"] = cross_entropy + regularization_losses
+
+        return cross_entropy
+
+    def create_architecture(self, mode, name=None):
         shape = (cfg.TRAIN.BS, None, None, cfg.IMG.CHANNEL)
         self._image = tf.placeholder(tf.float32, shape, name="Image")
-        self._mask = tf.placeholder(tf.float32, shape, name="Mask")
+        self._mask = tf.placeholder(tf.int32, shape, name="Mask")
         self._keep_prob = tf.placeholder(tf.float32, (1), name="KeepProb")
+        self._image_summaries.append(self._image)
+        self._image_summaries.append(self._mask)
 
         self._mode = mode
 
@@ -172,19 +215,62 @@ class DenseNet(object):
         training = mode == "TRAIN"
         testing = mode == "TEST"
 
+        layers_out = {}
         with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
                             weights_regularizer=weights_regularizer,
                             weights_initializer=weights_initializer,
                             biases_regularizer=biases_regularizer,
                             biases_initializer=biases_initializer):
-            prediction = self._build_network(training, name="DenseFCN")
+            prediction = self._build_network(training, name=name)
+        layers_out["prediction"] = prediction
+
+        self._add_losses()
+        layers_out.update(self._losses)
+
+        self._add_2D_metries()
 
         self._add_summaries()
+        self._summary_op = tf.summary.merge_all()
+        self._summary_op_val = tf.summary.merge(self.val_summaries)
 
+        return layers_out
 
+    def train_step(self, sess:tf.Session, train_batch, train_op, keep_prob, with_summary=False):
+        """ A train step
+        """
+        feed_dict = {self._image: train_batch["images"], self._mask: train_batch["labels"],
+                    self._keep_prob: keep_prob}
+        
+        if with_summary:
+            fetches = [self._losses["total_loss"], self._losses["cross_entropy"], self._metrics_2D["Dice"], 
+                        self._metrics_2D["VOE"], self._metrics_2D["VD"], self._summary_op, train_op]
+            loss, cross_entropy, dice, voe, vd, summary, _ = sess.run(fetches, feed_dict=feed_dict)
+            return loss, cross_entropy, dice, voe, vd, summary
+        else:
+            fetches = [self._losses["total_loss"], self._losses["cross_entropy"], self._metrics_2D["Dice"], 
+                        self._metrics_2D["VOE"], self._metrics_2D["VD"], train_op]
+            loss, cross_entropy, dice, voe, vd, _ = sess.run(fetches, feed_dict=feed_dict)
+            return loss, cross_entropy, dice, voe, vd
 
+    def get_val_summary(self, sess:tf.Session, keep_prob, data_batch):
+        feed_dict = {self._image: train_batch["images"], self._mask: train_batch["labels"],
+                    self._keep_prob: keep_prob}
+        summary = sess.run(self._summary_op_val, feed_dict=feed_dict)
 
+        return summary
 
+    def test2D_step(self, sess:tf.Session, test_batch, ret_image=False, keep_prob):
+        feed_dict = {self._image: test_batch["images"], self._mask: test_batch["labels"],
+                    self._keep_prob: keep_prob}
+        
+        pred = None
+        if ret_image:
+            fetches = [self._layers["Prediction"], self._metrics_2D["Dice"], self._metrics_2D["VOE"], self._metrics_2D["VD"]]
+            pred, dice, voe, vd = sess.run(fetches, feed_dict=feed_dict)
+        else:
+            fetches = [self._metrics_2D["Dice"], self._metrics_2D["VOE"], self._metrics_2D["VD"]]
+            dice, voe, vd = sess.run(fetches, feed_dict=feed_dict)
 
+        return pred, dice, voe, vd
 
         
