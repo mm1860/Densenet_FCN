@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
+import numpy as np
 
 from config import cfg
 
@@ -33,7 +34,6 @@ class DenseNet(object):
         self._growth_rate = growth_rate
         self._bc_mode = bc_mode
 
-        self._custom_summries = {}
         self._act_summaries = []
         self._image_summaries = []
         self._layers = {}
@@ -91,10 +91,6 @@ class DenseNet(object):
             for out in self._act_summaries:
                 tf.summary.histogram('Activation/' + out.op.name, out)
 
-            # custom summries
-            for key in self._custom_summries:
-                tf.summary.histogram('Custom/' + key, self._custom_summries[key])
-
             # add image summaries
             for image in self._image_summaries:
                 self.val_summaries.append(tf.summary.image("Image/" + image.op.name, image))
@@ -103,8 +99,19 @@ class DenseNet(object):
             for key, var in self._losses.items():
                 self.val_summaries.append(tf.summary.scalar(key, var))
 
-    def _metric_dice(self, logits:tf.Tensor, labels, eps=1e-5, name=None):
+    def _metric_dice(self, logits, labels, eps=1e-5, name=None):
         """ Dice coefficient
+
+        Params
+        ------
+        `logits`: binary seg prediction of the model, shape is the same with `logits`
+        `labels`: labeled segmentation map, shape [batch_size, None, None, 1]
+        `eps`: epsilon is set to avoid dividing zero
+        `name`: operation name used in tensorflow
+
+        Returns
+        -------
+        `dice`: average dice coefficient
         """
         dim = len(logits.get_shape())
         sum_axis = list(range(1, dim))
@@ -117,12 +124,20 @@ class DenseNet(object):
             right = tf.reduce_sum(labels, axis=sum_axis) ** 2
             dice = (2 * intersection) / (left + right + eps)
 
-        return dice
+        return tf.reduce_mean(dice)
 
     def _metric_VOE(self, logits, labels, eps=1e-5, name=None):
         """ Volumetric Overlap Error
 
         numerator / denominator
+ 
+        Params
+        ------
+        reference `self._metric_dice`
+        
+        Returns
+        -------
+        `dice`: average voe 
         """
         dim = len(logits.get_shape())
         sum_axis = list(range(1, dim))
@@ -134,12 +149,20 @@ class DenseNet(object):
             deno = tf.reduce_sum(tf.clip_by_value(logits + labels, 0., 1.), axis=sum_axis)
             voe = 100 * (1. - nume / (deno + eps))
 
-        return voe
+        return tf.reduce_mean(voe)
 
     def _metric_VD(self, logits, labels, eps=1e-5, name=None):
         """ Relative Volume Difference
 
         Since the measure is not symmetric, it is no metric. 
+ 
+        Params
+        ------
+        reference `self._metric_dice`
+
+        Returns
+        -------
+        `dice`: average dice coefficient
         """
         dim = len(logits.get_shape())
         sum_axis = list(range(1, dim))
@@ -151,25 +174,94 @@ class DenseNet(object):
             B = tf.reduce_sum(labels, axis=sum_axis)
             vd = 100 * (tf.abs(A - B) / (B + eps))
 
-        return vd
+        return tf.reduce_mean(vd)
 
-    def _metric_ASD(self, logtis3D, labels3D, eps=1e-5)
-        """ Average Symmetric Surface Distance
-        """
-        raise NotImplementedError
+    @staticmethod
+    def _metric_3D(logtis3D, labels3D, surface=False, eps=1e-5, name=None):
+        """ Compute 3D metrics:  
+        * (ASD) Average Symmetric Surface Distance
+        * (RMSD) Root Mean Square Symmetric Surface Distance
+        * (MSD) Maximum Symmetric Surface Distance
 
-    def _metric_RMSD(self, logits3D, labels3D, eps=1e-5):
-        """ Root Mean Square Symmetric Surface Distance
-        """
-        raise NotImplementedError
+        Params
+        ------
+        `logits3D`: 3D binary prediction, shape is the same with `labels3D`
+        `labels3D`: 3D labels for segmentation, shape [batch_size, None, None, None, 1]
+        `surface`: `logits3D` and `labels3D` represent object surface or not
+        `eps`: epsilon is set to avoid dividing zero
+        `name`: operation name used in tensorflow
 
-    def _metric_MSD(self, logits3D, labels3D, eps=1e-5):
-        """ Maximum Symmetric Surface Distance
+        Note: `logtis3D` and `labels3D` are all the binary tensor with {0, 1}. If flag 
+        `surface` is set, then we ask two input tensors represent 3D object surface, which 
+        means that voxels in the surface are set to 1 while others (inside or outside the 
+        surface) are set to 0. If flag is not set, then `logits3D` and `labels3D` should
+        represent the whole object (solid segmentation).
+
+        Returns
+        -------
+        `asd`: average asd
         """
-        raise NotImplementedError
+        tfconfig = tf.ConfigProto(allow_soft_placement=True)
+        tfconfig.gpu_options.allow_growth = True
+
+        metric_graph = tf.Graph()
+        sess = tf.Session(config=tfconfig, graph=metric_graph)
+
+        with metric_graph.as_default():
+            if surface:
+                logits_surf = logtis3D
+                labels_surf = labels3D
+            else:
+                logits = tf.placeholder(tf.int32, shape=logtis3D.shape, name="Prediction")
+                labels = tf.placeholder(tf.int32, shape=labels3D.shape, name="Labels")
+                kernel = np.ones((3, 3, 3), dtype=np.int32)
+                kernel[1,1,1] = 32
+                kernel = tf.constant(kernel, dtype=tf.int32, name="EdgeDet_kernel")
+                # prediction
+                conv1 = tf.nn.conv3d(logtis3D, kernel, [1,1,1,1,1], "SAME", name="Pred_conv")
+                logical1 = tf.equal(logtis3D, 1, name="Pred_eq")
+                logical2 = tf.greater_equal(conv1, 32 + 26, name="Pred_ge")
+                logits_surf = tf.cast(tf.logical_xor(logical1, logical2, name="Pred_logic_xor"), tf.int32)
+                # labels
+                conv2 = tf.nn.conv3d(labels3D, kernel, [1,1,1,1,1], "SAME", name="Lab_conv")
+                logical1 = tf.equal(labels3D, 1, name="Lab_e")
+                logical2 = tf.greater_equal(conv2, 32 + 26, name="Lab_ge")
+                labels_surf = tf.cast(tf.logical_xor(logical1, logical2, name="Lab_logic_xor"), tf.int32)
+
+            logits_surf_val, labels_surf_val = sess.run([logits_surf, labels_surf], feed_dict={
+                logits: logtis3D, labels: labels3D
+            })
+        
+        # !!! Need conver to C++ version for efficiency
+        asd_list = []
+        rmsd_list = []
+        msd_list = []
+        for i in range(len(logits_surf_val)):
+            surface_A = np.where(logits_surf_val[i][...,0] == 1)
+            surface_B = np.where(labels_surf_val[i][...,0] == 1)
+            dA_SB = []
+            for z1, y1, x1 in zip(*surface_A):
+                min_val = 99999999.
+                for z2, y2, x2 in zip(*surface_B):
+                    cur_val = (z2-z1)**2 + (y2-y2)**2 + (x2-x1)**2
+                    if cur_val < min_val:
+                        min_val = cur_val
+                dA_SB.append(min_val)
+            
+            dB_SA = []
+            for z1, y1, x1 in zip(*surface_B):
+                min_val = 99999999.
+                for z2, y2, x2 in zip(*surface_A):
+                    cur_val = (z2-z1)**2 + (y2-y2)**2 + (x2-x1)**2
+                    if cur_val < min_val:
+                        min_val = cur_val
+                dA_SB.append(min_val)
+
+            pass # !!! not finish
+        
 
     def _add_2D_metries(self, name=None):
-        logits = self._layers["binary_tensor_out"]
+        logits = self._layers["binary_pred"]
         labels = self._mask
         with tf.vairable_scope(name, "Metries_2D"):
             dice = self._metric_dice(logits, labels)

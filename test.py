@@ -77,19 +77,23 @@ if __name__ == '__main__':
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
     tfconfig.gpu_options.allow_growth = True
 
-    sess = tf.Session(config=tfconfig)
+    # define computation graph
+    main_graph = tf.Graph()
 
-    net = FCN(cfg.MODEL.INIT_CHANNELS, cfg.MODEL.BLOCKS, cfg.MODEL.NUM_LAYERS_PER_BLOCK,
-                cfg.MODEL.GROWTH_RATE, bc_mode=True, "FCN-DenseNet")
-    net.create_architecture("TEST")
+    sess = tf.Session(config=tfconfig, graph=main_graph)
 
-    if osp.exists(model_file):
-        print("Loading checkpoint from " + model_file)
-        saver = tf.train.Saver()
-        saver.restore(sess, model_file)
-        print("Model loaded")
-    else:
-        raise FileNotFoundError("Invalid model tag or iters!")
+    with main_graph.as_default():
+        net = FCN(cfg.MODEL.INIT_CHANNELS, cfg.MODEL.BLOCKS, cfg.MODEL.NUM_LAYERS_PER_BLOCK,
+                    cfg.MODEL.GROWTH_RATE, bc_mode=True, "FCN-DenseNet")
+        net.create_architecture("TEST")
+
+        if osp.exists(model_file):
+            print("Loading checkpoint from " + model_file)
+            saver = tf.train.Saver()
+            saver.restore(sess, model_file)
+            print("Model loaded")
+        else:
+            raise FileNotFoundError("Invalid model tag or iters!")
     
     test_path = osp.join(cfg.SRC_DIR, args.output) if args.output else None
     test_model(sess, net, args.test_set, test_path)

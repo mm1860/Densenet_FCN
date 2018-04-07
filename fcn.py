@@ -32,28 +32,29 @@ class FCN(DenseNet):
                 first_conv = slim.conv2d(self._image, self._init_channels, [3, 3])
                 first_conv = slim.batch_norm(first_conv, is_training=is_training, activation_fn=PReLU)
                 first_conv = slim.max_pool2d(first_conv, [2, 2])
-            self._custom_summries["FirstConv"] = first_conv
+            self._act_summries.append(first_conv)
             
             # Dense blocks
             tensor_out = self.create_dense_layer(first_conv)
 
             # Deconv block
-            tensor_out = slim.conv2d_transpose(tensor_out, 128, [2, 2], 2)
-            tensor_out = self._unit_layer(tensor_out, 64, 3, "DeconvUnit1")
-            tensor_out = slim.conv2d_transpose(tensor_out, 32, [2, 2], 2)
-            tensor_out = self._unit_layer(tensor_out, 16, 3, "DeconvUnit2")
-            tensor_out = slim.conv2d_transpose(tensor_out, 2, [2, 2], 2)
-            self._custom_summries["logits"] = tensor_out
+            with tf.variable_scope("Deconv"):
+                tensor_out = slim.conv2d_transpose(tensor_out, 128, [2, 2], 2)
+                tensor_out = self._unit_layer(tensor_out, 64, 3, "DeconvUnit1")
+                tensor_out = slim.conv2d_transpose(tensor_out, 32, [2, 2], 2)
+                tensor_out = self._unit_layer(tensor_out, 16, 3, "DeconvUnit2")
+                tensor_out = slim.conv2d_transpose(tensor_out, 2, [2, 2], 2)
+            self._act_summries.append(tensor_out)
             self._layers["logits"] = tensor_out
             
             softmax_tensor_out = slim.softmax(tensor_out)
-            self._custom_summries["Prediction"] = softmax_tensor_out
-            self._layers["Prediction"] = softmax_tensor_out
-            self._image_summaries.append(softmax_tensor_out[...,1])
+            prediction = softmax_tensor_out[..., 1]
+            self._layers["Prediction"] = prediction
+            self._image_summaries.append(prediction)
 
-            zeros = array_ops.zeros_like(softmax_tensor_out, dtype=tf.float32)
-            ones = array_ops.ones_like(softmax_tensor_out, dtype=tf.float32)
-            binary_tensor_out = array_ops.where(softmax_tensor_out > cfg.MODEL.THRESHOLD, ones, zeros)
-            self._layers["binary_tensor_out"] = binary_tensor_out
+            zeros = array_ops.zeros_like(prediction, dtype=tf.int32)
+            ones = array_ops.ones_like(prediction, dtype=tf.int32)
+            binary_pred = array_ops.where(prediction > cfg.MODEL.THRESHOLD, ones, zeros)
+            self._layers["binary_pred"] = binary_pred
 
         return tensor_out

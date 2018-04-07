@@ -245,11 +245,13 @@ class SolverWrapper(object):
         self.writer_val.close()
 
 def train_net(network, train_set, val_set, output_dir, tb_dir, model_tag="default", max_iters=100000):
-
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
     tfconfig.gpu_options.allow_growth = True
 
-    with tf.Session(config=tfconfig) as sess:
+    # define a computation graph
+    main_graph = tf.Graph()
+
+    with tf.Session(config=tfconfig, graph=main_graph) as sess:
         solver = SolverWrapper(network, train_set, val_set, output_dir, tb_dir, model_tag)
         print("\nBegin training...")
         solver.train_model(sess, max_iters)
