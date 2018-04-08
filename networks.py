@@ -1,6 +1,7 @@
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 import numpy as np
+from scipy.ndimage import morphology as mph
 
 from config import cfg
 
@@ -177,7 +178,7 @@ class DenseNet(object):
         return tf.reduce_mean(vd)
 
     @staticmethod
-    def _metric_3D(logtis3D, labels3D, surface=False, eps=1e-5, name=None):
+    def _metric_3D(logtis3D, labels3D, surface=False, eps=1e-6, **kwargs):
         """ Compute 3D metrics:  
         * (ASD) Average Symmetric Surface Distance
         * (RMSD) Root Mean Square Symmetric Surface Distance
@@ -189,7 +190,15 @@ class DenseNet(object):
         `labels3D`: 3D labels for segmentation, shape [batch_size, None, None, None, 1]
         `surface`: `logits3D` and `labels3D` represent object surface or not
         `eps`: epsilon is set to avoid dividing zero
-        `name`: operation name used in tensorflow
+
+        Other key word arguments
+        ------
+        `sampling`: the pixel resolution or pixel size. This is entered as an n-vector
+        where n is equal to the number of dimensions in the segmentation i.e. 2D or 3D.
+        The default value is 1 which means pixls are 1x1x1 mm in size  
+        `connectivity`: creates either a 2D(3x3) or 3D(3x3x3) matirx defining the neghbour-
+        hood around which the function looks for neighbouring pixels. Typically, this is 
+        defined as a six-neighbour kernel which is the default behaviour of the function  
 
         Note: `logtis3D` and `labels3D` are all the binary tensor with {0, 1}. If flag 
         `surface` is set, then we ask two input tensors represent 3D object surface, which 
@@ -197,68 +206,40 @@ class DenseNet(object):
         surface) are set to 0. If flag is not set, then `logits3D` and `labels3D` should
         represent the whole object (solid segmentation).
 
+        Acknowledgement: Thanks to the code snippet from @MLNotebook's blog.
+        [Blog link](https://mlnotebook.github.io/post/surface-distance-function/).
+
         Returns
         -------
         `asd`: average asd
         """
-        tfconfig = tf.ConfigProto(allow_soft_placement=True)
-        tfconfig.gpu_options.allow_growth = True
+        import math
 
-        metric_graph = tf.Graph()
-        sess = tf.Session(config=tfconfig, graph=metric_graph)
+        if surface:
+            A = logtis3D
+            B = labels3D
+        else:
+            sampling = kwargs.get("sampling", [1., 1., 1.])
+            connectivity = kwargs.get("connectivity", 1)
+            disc = mph.generate_binary_structure(logtis3D.ndim, connectivity)
 
-        with metric_graph.as_default():
-            if surface:
-                logits_surf = logtis3D
-                labels_surf = labels3D
-            else:
-                logits = tf.placeholder(tf.int32, shape=logtis3D.shape, name="Prediction")
-                labels = tf.placeholder(tf.int32, shape=labels3D.shape, name="Labels")
-                kernel = np.ones((3, 3, 3), dtype=np.int32)
-                kernel[1,1,1] = 32
-                kernel = tf.constant(kernel, dtype=tf.int32, name="EdgeDet_kernel")
-                # prediction
-                conv1 = tf.nn.conv3d(logtis3D, kernel, [1,1,1,1,1], "SAME", name="Pred_conv")
-                logical1 = tf.equal(logtis3D, 1, name="Pred_eq")
-                logical2 = tf.greater_equal(conv1, 32 + 26, name="Pred_ge")
-                logits_surf = tf.cast(tf.logical_xor(logical1, logical2, name="Pred_logic_xor"), tf.int32)
-                # labels
-                conv2 = tf.nn.conv3d(labels3D, kernel, [1,1,1,1,1], "SAME", name="Lab_conv")
-                logical1 = tf.equal(labels3D, 1, name="Lab_e")
-                logical2 = tf.greater_equal(conv2, 32 + 26, name="Lab_ge")
-                labels_surf = tf.cast(tf.logical_xor(logical1, logical2, name="Lab_logic_xor"), tf.int32)
+            A = logtis3D - mph.binary_erosion(logtis3D, disc)
+            B = labels3D - mph.binary_erosion(labels3D, disc)
 
-            logits_surf_val, labels_surf_val = sess.run([logits_surf, labels_surf], feed_dict={
-                logits: logtis3D, labels: labels3D
-            })
-        
-        # !!! Need conver to C++ version for efficiency
-        asd_list = []
-        rmsd_list = []
-        msd_list = []
-        for i in range(len(logits_surf_val)):
-            surface_A = np.where(logits_surf_val[i][...,0] == 1)
-            surface_B = np.where(labels_surf_val[i][...,0] == 1)
-            dA_SB = []
-            for z1, y1, x1 in zip(*surface_A):
-                min_val = 99999999.
-                for z2, y2, x2 in zip(*surface_B):
-                    cur_val = (z2-z1)**2 + (y2-y2)**2 + (x2-x1)**2
-                    if cur_val < min_val:
-                        min_val = cur_val
-                dA_SB.append(min_val)
-            
-            dB_SA = []
-            for z1, y1, x1 in zip(*surface_B):
-                min_val = 99999999.
-                for z2, y2, x2 in zip(*surface_A):
-                    cur_val = (z2-z1)**2 + (y2-y2)**2 + (x2-x1)**2
-                    if cur_val < min_val:
-                        min_val = cur_val
-                dA_SB.append(min_val)
+        dist_mapA = mph.distance_transform_edt(~A, sampling)
+        dist_mapB = mph.distance_transform_edt(~B, sampling)
 
-            pass # !!! not finish
-        
+        dist_A2B = dist_mapB[A != 0]
+        dist_B2A = dist_mapA[B != 0]
+        sum_A_and_B = np.sum(A) + np.sum(B)
+
+        asd = (np.sum(dist_A2B) + np.sum(dist_B2A)) / (sum_A_and_B + eps)
+        rmsd = math.sqrt((np.sum(dist_A2B ** 2) + np.sum(dist_B2A ** 2)) / (sum_A_and_B + eps))
+        msd = max([np.max(dist_A2B), np.max(dist_B2A)])
+
+        metrics_3D = {"ASD": asd, "RMSD": rmsd, "msd": msd}
+
+        return metrics_3D
 
     def _add_2D_metries(self, name=None):
         logits = self._layers["binary_pred"]
