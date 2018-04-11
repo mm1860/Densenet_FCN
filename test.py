@@ -1,23 +1,29 @@
-import tensorflow as tf
-import numpy as np
-from fcn import FCN
-from config import cfg
 import argparse
+import os.path as osp
 import sys
 from pprint import pprint
-import os.path as osp
-from data_loader import FullImageLoader
-from utils.timer import Timer
+
 import cv2
+import numpy as np
+import tensorflow as tf
+
+from config import cfg
+from data_loader import MedImageLoader2D
+from fcn import FCN
+from utils.timer import Timer
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Test a FCN-DenseNet network")
-    parser.add_argument("--model", dest="model", default=None, type=str,
+    parser.add_argument("--model", dest="model", required=True, type=str,
                         help="model to test")
-    parser.add_argument("--testset", dest="test_set", default="liver_2017_test", type=str,
+    parser.add_argument("--testset", dest="test_set", required=True, type=str,
                         help="dataset to test")
-    parser.add_argument("--iter", dest="iter", default=None, type=int,
+    parser.add_argument("--iter", dest="iter", required=True, type=int,
                         help="which checkpoint to load, identified by iter")
+    parser.add_argument("--mode", dest="mode", default="2D", type=str, 
+                        choices=["2D", "3D"],
+                        help="test mode (2D/3D image, default is 2D)")
     parser.add_argument("--output", dest="output", default=None, type=str,
                         help="directory to store test output")
 
@@ -34,10 +40,10 @@ def save_prediction(prediction, test_path, test_names):
         save_path = osp.join(test_path, test_names[i].replace(".mhd", ".jpg"))
         cv2.imwrite(save_path, image)
 
-def test_model(sess, net:FCN, test_set, test_path):
+def test_model_2D(sess, net:FCN, test_set, test_path):
     np.random.seed(cfg.RNG_SEED)
     
-    dataloader = FullImageLoader(test_set, once=True)
+    dataloader = MedImageLoader2D(cfg.DATA.ROOT_DIR, test_set, cfg.TEST.BS_2D, once=True)
     ret_image = True if test_path else False
 
     timer = Timer()
@@ -47,7 +53,7 @@ def test_model(sess, net:FCN, test_set, test_path):
     total_vd = []
     for test_batch in dataloader:
         timer.tic()
-        pred, dice, voe, vd = net.test2D_step(sess, test_batch, ret_image, keep_prob=1.0)
+        pred, dice, voe, vd = net.test_step_2D(sess, test_batch, ret_image, keep_prob=1.0)
         timer.toc()
 
         total_dice.append(dice)
@@ -62,6 +68,9 @@ def test_model(sess, net:FCN, test_set, test_path):
     print(" mean dice: {:.3f}\n mean_voe: {:.3f}\n mean_vd: {:.3f}".format(
         mean_dice, mean_voe, mean_vd
     ))
+
+def test_model_3D(sess, net:FCN, test_set, test_path):
+    raise NotImplementedError
 
 if __name__ == '__main__':
     args = parse_args()
@@ -96,6 +105,11 @@ if __name__ == '__main__':
             raise FileNotFoundError("Invalid model tag or iters!")
     
     test_path = osp.join(cfg.SRC_DIR, args.output) if args.output else None
-    test_model(sess, net, args.test_set, test_path)
+    if args.mode == "2D":
+        test_model_2D(sess, net, args.test_set, test_path)
+    elif args.mode == "3D":
+        test_model_3D(sess, net, args.test_set, test_path)
+    else:
+        raise ValueError("Only support 2D and 3D test routine.")
 
     sess.close()

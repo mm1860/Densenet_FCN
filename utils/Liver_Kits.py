@@ -100,8 +100,7 @@ def get_mhd_list(SrcDir):
         raise FileNotFoundError("{} can not found!".format(SrcDir))
         
     mhd_list = glob(osp.join(SrcDir, "*.mhd"))
-    size = len(mhd_list)
-    return mhd_list, size
+    return mhd_list
 
 def get_mhd_list_with_liver(SrcDir, verbose=False):
     """ Get mhd files list in a specific directory and remove the slices

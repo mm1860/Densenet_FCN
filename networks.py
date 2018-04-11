@@ -332,7 +332,7 @@ class DenseNet(object):
 
         return summary
 
-    def test2D_step(self, sess:tf.Session, test_batch, ret_image=False, keep_prob):
+    def test_step_2D(self, sess:tf.Session, test_batch, ret_image=False, keep_prob):
         feed_dict = {self._image: test_batch["images"], self._mask: test_batch["labels"],
                     self._keep_prob: keep_prob}
         
@@ -346,4 +346,4 @@ class DenseNet(object):
 
         return pred, dice, voe, vd
 
-        
+    

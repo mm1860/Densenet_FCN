@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 from config import cfg
-from data_loader import FullImageLoader
+from data_loader import MedImageLoader2D
 from fcn import FCN
 from utils.timer import Timer
 
@@ -171,8 +171,8 @@ class SolverWrapper(object):
 
     def train_model(self, sess, max_iters):
         # build data layer
-        self.dataloader = FullImageLoader(self.train_set)
-        self.dataloader_val = FullImageLoader(self.val_set, random=True)
+        self.dataloader = MedImageLoader2D(cfg.DATA.ROOT_DIR, self.train_set, cfg.TRAIN.BS)
+        self.dataloader_val = MedImageLoader2D(cfg.DATA.ROOT_DIR, self.val_set, cfg.TRAIN.BS, random=True)
 
         # construct graph
         lr, train_op = self._construct_graph(sess)
@@ -221,8 +221,8 @@ class SolverWrapper(object):
                 print("iter {:d}/{:d}, total loss: {:.6f}\n"
                         " >>> cross entropy: {:.6f}\n"
                         " >>> metric Dice:   {:.2f}\n"
-                        " >>> metric Voe:    {:.2f}\n"
-                        " >>> metric Vd:     {:.2f}\n"
+                        " >>> metric VOE:    {:.2f}\n"
+                        " >>> metric VD:     {:.2f}\n"
                         " >>>lr: {:f}".format(
                     iter, max_iter, loss, cross_entropy, dice, voe, vd, lr.eval()
                 ))
@@ -248,10 +248,7 @@ def train_net(network, train_set, val_set, output_dir, tb_dir, model_tag="defaul
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
     tfconfig.gpu_options.allow_growth = True
 
-    # define a computation graph
-    main_graph = tf.Graph()
-
-    with tf.Session(config=tfconfig, graph=main_graph) as sess:
+    with tf.Session(config=tfconfig) as sess:
         solver = SolverWrapper(network, train_set, val_set, output_dir, tb_dir, model_tag)
         print("\nBegin training...")
         solver.train_model(sess, max_iters)

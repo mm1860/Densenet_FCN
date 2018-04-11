@@ -60,6 +60,15 @@ __C.TRAIN.SUMMARY_INTERVAL = 60
 __C.TRAIN.KEEP_PROB = 0.7
 
 # /////////////////////////////////////////////////////////////////
+__C.TEST = edict()
+
+# batch size for test 2D image
+__C.TEST.BS_2D = 1
+
+# batch size for test 3D image
+__C.TEST.BS_3D = 1
+
+# /////////////////////////////////////////////////////////////////
 __C.MODEL = edict()
 
 # bias decay or not
