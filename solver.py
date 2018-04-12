@@ -2,14 +2,17 @@ import os
 import os.path as osp
 import time
 from glob import glob
+from collections import defaultdict as ddict
 
+import cv2
 import numpy as np
 import tensorflow as tf
 
 from config import cfg
-from data_loader import MedImageLoader2D
+from data_loader import MedImageLoader2D, MedImageLoader3D
 from fcn import FCN
 from utils.timer import Timer
+from utils.logger import create_logger
 
 try:
     import cPickle as pickle
@@ -20,9 +23,10 @@ except ImportError:
 
 class SolverWrapper(object):
     """ A wrapper class for solver
-
     """
-    def __init__(self, network:FCN, train_set, val_set, output_dir, tbdir, model_tag="default"):
+    def __init__(self, network:FCN, train_set, val_set, output_dir, tbdir, 
+                model_name="default",
+                logger=None):
         self.net = network
         self.train_set = train_set
         self.val_set = val_set
@@ -31,7 +35,8 @@ class SolverWrapper(object):
         self.tbvaldir = tbdir + "_val"
         if not osp.exists(self.tbvaldir):
             os.makedirs(self.tbvaldir)
-        self.model_prefix = model_tag
+        self.model_prefix = model_name
+        self.logger = logger or create_logger(file_=False)
 
     def _construct_graph(self, sess:tf.Session):
         with sess.graph.as_default():
@@ -85,7 +90,7 @@ class SolverWrapper(object):
         sfilename = self.model_prefix + "_iter_{:d}.ckpt".format(iter)
         sfilename = osp.join(self.output_dir, sfilename)
         self.saver.save(sess, sfilename)
-        print("Write snapshot to {:s}".format(sfilename))
+        logger.info("Write snapshot to {:s}".format(sfilename))
 
         nfilename = self.model_prefix + "_iter_{:d}.pkl".format(iter)
         nfilename = osp.join(self.output_dir, nfilename)
@@ -100,9 +105,9 @@ class SolverWrapper(object):
         return sfilename, nfilename
 
     def _from_snapshot(self, sess, sfile, nfile):
-        print('Restoring model snapshots from {:s}'.format(sfile))
+        logger.info('Restoring model snapshots from {:s}'.format(sfile))
         self.saver.restore(sess, sfile)
-        print('Restored.')
+        logger.info('Restored.')
         # Needs to restore the other hyper-parameters/states for training, (TODO xinlei) I have
         # tried my best to find the random states so that it can be recovered exactly
         # However the Tensorflow state is currently not available
@@ -132,7 +137,7 @@ class SolverWrapper(object):
         rm_num = len(ss_paths) - cfg.TRAIN.SNAPSHOT_KEPT
         for _ in range(rm_num):
             sfile = ss_paths[0]
-            if osp.exists(sfile)
+            if osp.exists(sfile):
                 os.remove(sfile)
             else:
                 os.remove(sfile + '.data-00000-of-00001')
@@ -203,7 +208,7 @@ class SolverWrapper(object):
             train_batch = next(self.dataloader)
 
             now = time.time()
-            if iter == 1 or now - last_summary_time > cfg.TRAIN.SUMMARY_INTERVAL
+            if iter == 1 or now - last_summary_time > cfg.TRAIN.SUMMARY_INTERVAL:
                 loss, cross_entropy, dice, voe, vd, summary = self.net.train_step(
                     sess, train_batch, train_op, cfg.TRAIN.KEEP_PROB, with_summary=True)
                 self.writer.add_summary(summary, float(iter))
@@ -218,12 +223,12 @@ class SolverWrapper(object):
 
             # display step
             if iter % cfg.TRAIN.DISPLAY == 0:
-                print("iter {:d}/{:d}, total loss: {:.6f}\n"
-                        " >>> cross entropy: {:.6f}\n"
-                        " >>> metric Dice:   {:.2f}\n"
-                        " >>> metric VOE:    {:.2f}\n"
-                        " >>> metric VD:     {:.2f}\n"
-                        " >>>lr: {:f}".format(
+                self.logger.info("iter {:d}/{:d}, total loss: {:.6f}\n"
+                                 " >>> cross entropy: {:.6f}\n"
+                                 " >>> metric Dice:   {:.2f}\n"
+                                 " >>> metric VOE:    {:.2f}\n"
+                                 " >>> metric VD:     {:.2f}\n"
+                                 " >>>lr: {:f}".format(
                     iter, max_iter, loss, cross_entropy, dice, voe, vd, lr.eval()
                 ))
 
@@ -244,12 +249,98 @@ class SolverWrapper(object):
         self.writer.close()
         self.writer_val.close()
 
-def train_net(network, train_set, val_set, output_dir, tb_dir, model_tag="default", max_iters=100000):
+def train_model(network, train_set, val_set, output_dir, tb_dir, 
+                model_name="default", 
+                max_iters=100000,
+                logger=None):
+    """ Entry of training model
+    
+    Params
+    ------
+    `network`: network for training, it should inherit DenseNet class  
+    `train_set`: a string, specify the training dataset (the final part of the dataset path)  
+    `val_set`: a string, specify the validation dataset (the final part of the dataset path)  
+    `output_dir`: a string, directory for saving model  
+    `tb_dir`: a string, directory for saving tensorboard events files  
+    `model_name`: a string, prefix of model file  
+    `max_iters`: max training steps  
+    `logger`: logger
+    """
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
     tfconfig.gpu_options.allow_growth = True
 
     with tf.Session(config=tfconfig) as sess:
-        solver = SolverWrapper(network, train_set, val_set, output_dir, tb_dir, model_tag)
-        print("\nBegin training...")
+        logger = logger or create_logger(file_=False)
+        solver = SolverWrapper(network, train_set, val_set, output_dir, tb_dir, model_name, logger)
+        logger.info("\nBegin training...")
         solver.train_model(sess, max_iters)
-        print("Training done!")
+        logger.info("Training done!")
+
+def save_prediction(prediction, test_path, test_names):
+    for i, slice in enumerate(prediction):
+        image = (prediction * 255).astype(np.uint8)
+        save_path = osp.join(test_path, test_names[i].replace(".mhd", ".jpg"))
+        cv2.imwrite(save_path, image)
+
+def test_model_2D(sess, net:FCN, test_set, test_path, logger=None):
+    np.random.seed(cfg.RNG_SEED)
+    logger = logger or create_logger(file_=False)
+    
+    dataloader = MedImageLoader2D(cfg.DATA.ROOT_DIR, test_set, cfg.TEST.BS_2D, once=True)
+    ret_image = "Prediction" if test_path else False
+
+    timer = Timer()
+
+    total_dice = []
+    total_voe = []
+    total_vd = []
+    for test_batch in dataloader:
+        timer.tic()
+        pred, dice, voe, vd = net.test_step_2D(sess, test_batch, keep_prob=1.0, ret_image=ret_image)
+        timer.toc()
+
+        total_dice.append(dice)
+        total_voe.append(voe)
+        total_vd.append(vd)
+
+        save_prediction(pred, test_path, test_batch["names"])
+
+    mean_dice = np.mean(total_dice)
+    mean_voe = np.mean(total_voe)
+    mean_vd = np.mean(total_vd)
+    logger.info("\n mean dice: {:.3f}\n mean_voe: {:.3f}\n mean_vd: {:.3f}".format(
+        mean_dice, mean_voe, mean_vd
+    ))
+
+def test_model_3D(sess, net:FCN, test_set, test_path, logger=None):
+    np.random.seed(cfg.RNG_SEED)
+    logger = logger or create_logger(file_=False)
+
+    dataloader = MedImageLoader3D(cfg.DATA.ROOT_DIR, test_set, cfg.TEST.BS_3D, once=True)
+    ret_image = "Binary_Pred" if test_path else False
+
+    timer = Timer()
+
+    metrics = ddict(list)
+    for test_volume in dataloader:
+        timer.tic()
+        logits3D = np.zeros_like(test_volume["images"], np.float32)
+        for i in range(len(test_volume["images"])):
+            test_batch = {"images": test_volume["images"][i],
+                          "labels": test_volume["labels"][i]}
+            pred = net.test_step_2D(sess, test_batch, keep_prob=1.0, ret_image=ret_image, ret_metrics=False)
+            logits3D[i] = pred
+        
+        # Calculate 3D metrics
+        metrics_3D = net.metric_3D(logits3D, test_volume["labels"], sampling=test_volume["meta"]["ElementSpacing"])
+        for key, val in metrics_3D:
+            metrics[key].append(val)
+        timer.toc()
+
+    logger.info("\n mean Dice: {:.3f}\n mean VOE:  {:.3f}"
+                "\n mean VD:   {:.3f}\n mean ASD:  {:.3f}"
+                "\n mean RMSD: {:.3f}\n mean MSD:  {:.3f}\n".format(
+              np.mean(metrics["Dice"]), np.mean(metrics["VOE"]), np.mean(metrics["VD"]),
+              np.mean(metrics["ASD"]), np.mean(metrics["RMSD"]), np.mean(metrics["MSD"])
+         ))
+ 

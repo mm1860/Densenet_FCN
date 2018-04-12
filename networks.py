@@ -1,9 +1,10 @@
-import tensorflow as tf
-import tensorflow.contrib.slim as slim
 import numpy as np
+import tensorflow as tf
 from scipy.ndimage import morphology as mph
+from tensorflow.contrib import slim as slim
 
 from config import cfg
+
 
 def PReLU(tensor_in:tf.Tensor, name=None):
     with tf.variable_scope(name, "PReLU", [tensor_in]):
@@ -69,7 +70,7 @@ class DenseNet(object):
 
     def create_dense_layer(self, tensor_in):
         for i in range(self._num_blocks):
-            with tf.variable_scope("DenseBlock%d" % (i + 1))
+            with tf.variable_scope("DenseBlock%d" % (i + 1)):
                 tensor_out = slim.repeat(tensor_in, self._num_layers_per_block[i], self._internal_layer,
                                         self._growth_rate, is_training, self._bc_mode)
                 self._act_summaries.append(tensor_out)
@@ -98,7 +99,11 @@ class DenseNet(object):
 
             # add losses
             for key, var in self._losses.items():
-                self.val_summaries.append(tf.summary.scalar(key, var))
+                self.val_summaries.append(tf.summary.scalar("Loss/" + key, var))
+
+            # add metrics
+            for key, var in self._metrics_2D.items():
+                self.val_summaries.append(tf.summary.scalar("Metric/" + key, var))
 
     def _metric_dice(self, logits, labels, eps=1e-5, name=None):
         """ Dice coefficient
@@ -178,18 +183,23 @@ class DenseNet(object):
         return tf.reduce_mean(vd)
 
     @staticmethod
-    def _metric_3D(logtis3D, labels3D, surface=False, eps=1e-6, **kwargs):
+    def metric_3D(logtis3D, labels3D, surface=False, eps=1e-6, **kwargs):
         """ Compute 3D metrics:  
-        * (ASD) Average Symmetric Surface Distance
+        * (Dice) Dice Coefficient
+        * (VOE)  Volumetric Overlap Error
+        * (VD)   Relative Volume Difference
+        * (ASD)  Average Symmetric Surface Distance
         * (RMSD) Root Mean Square Symmetric Surface Distance
-        * (MSD) Maximum Symmetric Surface Distance
+        * (MSD)  Maximum Symmetric Surface Distance
 
         Params
         ------
-        `logits3D`: 3D binary prediction, shape is the same with `labels3D`
-        `labels3D`: 3D labels for segmentation, shape [batch_size, None, None, None, 1]
-        `surface`: `logits3D` and `labels3D` represent object surface or not
-        `eps`: epsilon is set to avoid dividing zero
+        `logits3D`: 3D binary prediction, shape is the same with `labels3D`, it should be 
+        a int array or boolean array.  
+        `labels3D`: 3D labels for segmentation, shape [batch_size, None, None, None, 1], it
+        shoule be a int array or boolean array.  
+        `surface`: `logits3D` and `labels3D` represent object surface or not  
+        `eps`: epsilon is set to avoid dividing zero  
 
         Other key word arguments
         ------
@@ -199,10 +209,17 @@ class DenseNet(object):
         `connectivity`: creates either a 2D(3x3) or 3D(3x3x3) matirx defining the neghbour-
         hood around which the function looks for neighbouring pixels. Typically, this is 
         defined as a six-neighbour kernel which is the default behaviour of the function  
+        `require`: a string or a list of string to specify which metrics need to be return, 
+        default this function will return all the metrics listed above. If `surface` is set,
+        only ASD, RMSD and MSD can be computed. For example, if use
+        ```python
+        _metric_3D(logits3D, labels3D, require=["Dice", "VOE", "ASD"])
+        ```
+        then only these three metrics will be returned.
 
         Note: `logtis3D` and `labels3D` are all the binary tensor with {0, 1}. If flag 
         `surface` is set, then we ask two input tensors represent 3D object surface, which 
-        means that voxels in the surface are set to 1 while others (inside or outside the 
+        means that voxels on the surface are set to 1 while others (inside or outside the 
         surface) are set to 0. If flag is not set, then `logits3D` and `labels3D` should
         represent the whole object (solid segmentation).
 
@@ -211,38 +228,107 @@ class DenseNet(object):
 
         Returns
         -------
-        `asd`: average asd
+        metrics required
         """
-        import math
+        metrics = ["Dice", "VOE", "VD", "ASD", "RMSD", "MSD"]
+        need_dist_map = False
 
-        if surface:
-            A = logtis3D
-            B = labels3D
-        else:
-            sampling = kwargs.get("sampling", [1., 1., 1.])
-            connectivity = kwargs.get("connectivity", 1)
-            disc = mph.generate_binary_structure(logtis3D.ndim, connectivity)
+        required = kwargs.get("required", None)
+        if required is None:
+            required = metrics
+        elif isinstance(required, str):
+            required = [required]
+            if required[0] not in metrics:
+                raise ValueError("Not supported metric: %s" % required[0])
+            elif required in metrics[3:]:
+                need_dist_map = True
+            else:
+                need_dist_map = False
 
-            A = logtis3D - mph.binary_erosion(logtis3D, disc)
-            B = labels3D - mph.binary_erosion(labels3D, disc)
+        for req in required:
+            if req not in metrics:
+                raise ValueError("Not supported metric: %s" % req)
+            if (not need_dist_map) and req in metrics[3:]:
+                need_dist_map = True
 
-        dist_mapA = mph.distance_transform_edt(~A, sampling)
-        dist_mapB = mph.distance_transform_edt(~B, sampling)
+        assert logits3D.shape == labels3D.shape, "Shape mismatch of logits3D and labels3D." \
+                                    "Logits3D has shape %r while labels3D has shape %r" % (
+                                    logits3D.shape, labels3D.shape)
+        shape = logits3D.shape
+        logits3D = logits3D[...,0].astype(np.int32)
+        labels3D = labels3D[...,0].astype(np.int32)
 
-        dist_A2B = dist_mapB[A != 0]
-        dist_B2A = dist_mapA[B != 0]
-        sum_A_and_B = np.sum(A) + np.sum(B)
+        metrics_3D = {}
 
-        asd = (np.sum(dist_A2B) + np.sum(dist_B2A)) / (sum_A_and_B + eps)
-        rmsd = math.sqrt((np.sum(dist_A2B ** 2) + np.sum(dist_B2A ** 2)) / (sum_A_and_B + eps))
-        msd = max([np.max(dist_A2B), np.max(dist_B2A)])
+        if need_dist_map:
+            import math
 
-        metrics_3D = {"ASD": asd, "RMSD": rmsd, "msd": msd}
+            if surface:
+                A = logtis3D
+                B = labels3D
+            else:
+                sampling = kwargs.get("sampling", [1., 1., 1.])
+                connectivity = kwargs.get("connectivity", 1)
+                disc = mph.generate_binary_structure(logtis3D.ndim, connectivity)
+
+                A = np.zeros_like(logits3D, np.int32)
+                B = np.zeros_like(labels3D, np.int32)
+                for i in range(len(A)):
+                    A[i] = logtis3D[i] - mph.binary_erosion(logtis3D[i], disc)
+                    B[i] = labels3D[i] - mph.binary_erosion(labels3D[i], disc)
+            
+            dist_mapA = np.zeros_like(A, np.float32)
+            dist_mapB = np.zeros_like(B, np.float32)
+            dist_A2B = np.zeros_like(dist_mapA, np.float32)
+            dist_B2A = np.zeros_like(dist_mapB, np.float32)
+            for i in range(len(A)):
+                dist_mapA[i] = mph.distance_transform_edt(~A[i], sampling)
+                dist_mapB[i] = mph.distance_transform_edt(~B[i], sampling)
+
+                dist_A2B[i] = dist_mapB[i][A != 0]
+                dist_B2A[i] = dist_mapA[i][B != 0]
+
+            ndims = len(A.shape)
+            reduce_axis = list(range(1, ndims))
+            sum_A_and_B = np.sum(A, reduce_axis) + np.sum(B, reduce_axis)
+            
+            if "ASD" in required:
+                asd = (np.sum(dist_A2B, reduce_axis) + np.sum(dist_B2A, reduce_axis)) / (sum_A_and_B + eps)
+                metrics_3D["ASD"] = np.mean(asd)
+                required.remove("ASD")
+            if "RMSD" in required:
+                rmsd = math.sqrt((np.sum(dist_A2B ** 2, reduce_axis) + np.sum(dist_B2A ** 2, reduce_axis)) / (sum_A_and_B + eps))
+                metrics_3D["RMSD"] = np.mean(rmsd)
+                required.remove("RMSD")
+            if "MSD" in required:
+                msd = np.maximum([np.max(dist_A2B, reduce_axis), np.max(dist_B2A, reduce_axis)])
+                metrics_3D["MSD"] = np.mean(msd)
+                required.remove("MSD")
+
+        if required != []:
+            logits3D = logits3D.astype(np.float32)
+            labels3D = labels3D.astype(np.float32)
+
+            intersection = np.sum(logits3D * labels3D, reduce_axis)
+            if "Dice" in required:
+                left = np.sum(logits3D, reduce_axis) ** 2
+                right = np.sum(labels3D, reduce_axis) ** 2
+                dice = (2 * intersection) / (left + right + eps)
+                metrics_3D["Dice"] = np.mean(dice)
+            if "VOE" in required:
+                denominator = np.sum(np.clip(logits3D + labels3D, 0, 1), reduce_axis)
+                voe = 100 * (1 - intersection / (denominator + eps))
+                metrics_3D["VOE"] = np.mean(voe)
+            if "VD" in required:
+                logits_sum = np.sum(logits3D, reduce_axis)
+                labels_sum = np.sum(labels3D, reduce_axis)
+                vd = 100 * (np.abs(logits3D - labels3D) / (labels_sum + eps))
+                metrics_3D["VD"] = np.mean(vd)
 
         return metrics_3D
 
     def _add_2D_metries(self, name=None):
-        logits = self._layers["binary_pred"]
+        logits = self._layers["Binary_Pred"]
         labels = self._mask
         with tf.vairable_scope(name, "Metries_2D"):
             dice = self._metric_dice(logits, labels)
@@ -275,12 +361,20 @@ class DenseNet(object):
         self._image_summaries.append(self._mask)
 
         self._mode = mode
-
+        
         weights_regularizer = tf.contrib.layers.l2_regularier(cfg.MODEL.WEIGHT_DECAY)
-        weights_initializer = tf.truncated_normal_initializer(mean=0., stddev=0.01)
+        if cfg.MODEL.WEIGHT_INITIALIZER == "trunc_norm":
+            weights_initializer = tf.initializers.truncated_normal(mean=0.0, stddev=0.01)
+        elif cfg.MODEL.WEIGHT_INITIALIZER == "rand_norm":
+            weights_initializer = tf.initializers.random_normal(mean=0.0, stddev=0.01)
+        elif cfg.MODEL.WEIGHT_INITIALIZER == "xavier":
+            weights_initializer = tf.contrib.layers.xavier_initializer()
+        else:
+            raise ValueError("Not defined weight initializer: %s" % cfg.MODEL.WEIGHT_INITIALIZER)
+        
         if cfg.MODEL.USE_BIAS:
             biases_regularizer = weights_regularizer if cfg.MODEL.BIAS_DECAY else tf.no_regularizer
-            biases_initializer = tf.constant_initializer(0.)
+            biases_initializer = tf.initializers.constant(0.0)
         else:
             biases_regularizer = None
             biases_initializer = None
@@ -332,18 +426,21 @@ class DenseNet(object):
 
         return summary
 
-    def test_step_2D(self, sess:tf.Session, test_batch, ret_image=False, keep_prob):
+    def test_step_2D(self, sess:tf.Session, test_batch, keep_prob, ret_image=None, ret_metrics=True):
+        if not (ret_image or ret_metrics):
+            return None
+
         feed_dict = {self._image: test_batch["images"], self._mask: test_batch["labels"],
                     self._keep_prob: keep_prob}
         
         pred = None
+        fetches = []
         if ret_image:
-            fetches = [self._layers["Prediction"], self._metrics_2D["Dice"], self._metrics_2D["VOE"], self._metrics_2D["VD"]]
-            pred, dice, voe, vd = sess.run(fetches, feed_dict=feed_dict)
-        else:
-            fetches = [self._metrics_2D["Dice"], self._metrics_2D["VOE"], self._metrics_2D["VD"]]
-            dice, voe, vd = sess.run(fetches, feed_dict=feed_dict)
+            assert ret_image in ["Prediction", "Binary_Pred"], "ret_image should choice in [None, 'Prediction', 'Binary_Pred']"
+            fetches.append(self._layers[ret_image])
+        if ret_metrics:
+            fetches.extend([self._metrics_2D["Dice"], self._metrics_2D["VOE"], self._metrics_2D["VD"]])
+            
+        res = sess.run(fetches, feed_dict=feed_dict)
 
-        return pred, dice, voe, vd
-
-    
+        return res

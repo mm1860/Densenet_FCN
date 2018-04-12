@@ -1,5 +1,5 @@
 import tensorflow as tf
-import tensorflow.contrib.slim as slim
+from tensorflow.contrib import slim as slim
 from tensorflow.python.ops import array_ops
 from networks import DenseNet
 
@@ -13,7 +13,6 @@ class FCN(DenseNet):
         self._name = name if name is not None else "FC_DenseNet"
         super(FCN, self).__init__(init_channels, num_blocks, num_layers_per_block,
                                 growth_rate, bc_mode, self._name)
-        
 
     
     def _transition_layer(self, tensor_in:tf.Tensor, out_channels, training=True, name=None):
@@ -55,6 +54,6 @@ class FCN(DenseNet):
             zeros = array_ops.zeros_like(prediction, dtype=tf.int32)
             ones = array_ops.ones_like(prediction, dtype=tf.int32)
             binary_pred = array_ops.where(prediction > cfg.MODEL.THRESHOLD, ones, zeros)
-            self._layers["binary_pred"] = binary_pred
+            self._layers["Binary_Pred"] = binary_pred
 
         return tensor_out

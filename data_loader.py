@@ -111,7 +111,7 @@ class MedImageLoader3D(DataLoader):
             mask_file = self.images[ind]
             image_file = mask_file.replace("mask", "liver").replace("_m_", "")
             _, mask = mhd_reader(mask_file)
-            _, liver = mhd_reader(image_file)
+            meta_data, liver = mhd_reader(image_file)
             mask = np.reshape(mask, (-1, self.height, self.width))
             mask = (mask / np.max(mask)).astype(np.int32)
             image = np.reshape(image, (-1, self.height, self.width))
@@ -123,6 +123,6 @@ class MedImageLoader3D(DataLoader):
             name = osp.basename(mask_file).replace("_m_", "_p_")
             image_names.append(name)
         
-        blob = {"images": images, "labels": masks, "names": image_names}
+        blob = {"images": images, "labels": masks, "names": image_names, "meta": meta_data}
 
         return blob

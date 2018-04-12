@@ -9,7 +9,17 @@ cfg = __C
 
 __C.RNG_SEED = 3
 
+# source code directory
 __C.SRC_DIR = osp.join(osp.dirname(__file__))
+
+# default output directory
+__C.OUTPUT_DIR = "output"
+
+# default tensorboard directory
+__C.TB_DIR = "tensorboard"
+
+# default logging directory
+__C.LOG_DIR = "logs"
 
 # /////////////////////////////////////////////////////////////////
 __C.IMG = edict()
@@ -19,12 +29,22 @@ __C.IMG.CHANNEL = 1
 # /////////////////////////////////////////////////////////////////
 __C.DATA = edict()
 
+# platform compatible
 if "Windows" in platform.system():
     __C.DATA.ROOT_DIR = "C:\\DataSet\\LiverQL"
 elif "Linux" in platform.system():
     __C.DATA.ROOT_DIR = "/home/jarvis/DataSet/LiverQL"
 else:
     raise SystemError("Not supported operating system!")
+
+# specify default training dataset
+__C.DATA.TRAINSET = "Liver_2016_train+Liver_2017_train"
+
+# specify default validation dataset
+__C.DATA.VALSET = "Liver_2017_test"
+
+# specify default testing dataset
+__C.DATA.TESTSET = "Liver_2017_test"
 
 # /////////////////////////////////////////////////////////////////
 __C.TRAIN = edict()
@@ -77,7 +97,7 @@ __C.MODEL.BIAS_DECAY = False
 # weight decay
 __C.MODEL.WEIGHT_DECAY = 0.001
 
-# output channels of the first convolution
+# output channels of the first convolutional layer
 __C.MODEL.INIT_CHANNELS = 24
 
 # number of dense blocks
@@ -94,3 +114,10 @@ __C.MODEL.USE_BIAS = False
 
 # threshold of final segmentation
 __C.MODEL.THRESHOLD = 0.5
+
+# weight initializer
+# * trunc_norm
+# * rand_norm
+# * xavier
+__C.MODEL.WEIGHT_INITIALIZER = "trunc_norm"
+
