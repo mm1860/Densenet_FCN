@@ -11,6 +11,7 @@ import tensorflow as tf
 from config import cfg
 from data_loader import MedImageLoader2D, MedImageLoader3D
 from fcn import FCN
+from networks import metric_3D
 from utils.timer import Timer
 from utils.logger import create_logger
 
@@ -31,10 +32,8 @@ class SolverWrapper(object):
         self.train_set = train_set
         self.val_set = val_set
         self.output_dir = output_dir
-        self.tbdir = tbdi
+        self.tbdir = tbdir
         self.tbvaldir = tbdir + "_val"
-        if not osp.exists(self.tbvaldir):
-            os.makedirs(self.tbvaldir)
         self.model_prefix = model_name
         self.logger = logger or create_logger(file_=False)
 
@@ -49,8 +48,11 @@ class SolverWrapper(object):
             # set learning rate and momentum
             lr = tf.Variable(cfg.TRAIN.LR, trainable=False)
             optimizer = tf.train.MomentumOptimizer(lr, cfg.TRAIN.MOMENTUM)
+            
             # compute gradients
-            train_op = optimizer.minimize(losses)
+            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            with tf.control_dependencies(update_ops):
+                train_op = optimizer.minimize(losses)
 
             # handle saver ourselves
             self.saver = tf.train.Saver(max_to_keep=100000)
@@ -322,19 +324,21 @@ def test_model_3D(sess, net:FCN, test_set, test_path, logger=None):
     timer = Timer()
 
     metrics = ddict(list)
-    for test_volume in dataloader:
+    for test_volumes in dataloader:
         timer.tic()
-        logits3D = np.zeros_like(test_volume["images"], np.float32)
-        for i in range(len(test_volume["images"])):
-            test_batch = {"images": test_volume["images"][i],
-                          "labels": test_volume["labels"][i]}
-            pred = net.test_step_2D(sess, test_batch, keep_prob=1.0, ret_image=ret_image, ret_metrics=False)
-            logits3D[i] = pred
+        for i in range(len(test_volumes["images"])):
+            logits3D = np.zeros_like(test_volumes["images"][i], np.int32)
+            for j in range(0, len(test_volumes["image"][i]) - cfg.TEST.BS, cfg.TEST.BS):
+                test_batch = {"images": test_volumes["images"][i][j:j + cfg.TEST.BS],
+                              "labels": test_volumes["labels"][i][j:j + cfg.TEST.BS]}
+                pred = net.test_step_2D(sess, test_batch, keep_prob=1.0, ret_image=ret_image, ret_metrics=False)
+                logits3D[j:j + cfg.TEST.BS] = pred
         
-        # Calculate 3D metrics
-        metrics_3D = net.metric_3D(logits3D, test_volume["labels"], sampling=test_volume["meta"]["ElementSpacing"])
-        for key, val in metrics_3D:
-            metrics[key].append(val)
+            # Calculate 3D metrics
+            metrics_3D = metric_3D(logits3D, test_volumes["labels"][i], 
+                                    sampling=test_volume["meta"]["ElementSpacing"], connectivity=3)
+            for key, val in metrics_3D:
+                metrics[key].append(val)
         timer.toc()
 
     logger.info("\n mean Dice: {:.3f}\n mean VOE:  {:.3f}"
@@ -344,3 +348,15 @@ def test_model_3D(sess, net:FCN, test_set, test_path, logger=None):
               np.mean(metrics["ASD"]), np.mean(metrics["RMSD"]), np.mean(metrics["MSD"])
          ))
  
+
+if __name__ == "__main__":
+    # check computation graph
+    net = FCN(24, 3, 12, 12, bc_mode=True, name="FCN-DenseNet")
+    solver = SolverWrapper(net, None, None, "a", "b", logger=True)  
+    
+    tfconfig = tf.ConfigProto(allow_soft_placement=True)
+    tfconfig.gpu_options.allow_growth = True
+
+    with tf.Session(config=tfconfig) as sess:
+        solver._construct_graph(sess)
+        solver.writer.close()

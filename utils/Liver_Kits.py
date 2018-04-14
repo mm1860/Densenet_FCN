@@ -73,8 +73,8 @@ def mhd_reader(mhdpath, only_meta=False):
             buffer = fraw.read()
     
         raw_image = np.frombuffer(buffer, dtype=METType[meta_info['ElementType']])
-        raw_image = np.reshape(raw_image, meta_info['DimSize'])
-
+        raw_image = np.reshape(raw_image, list(reversed(meta_info['DimSize'])))
+        
     return meta_info, raw_image 
 
 def bbox_from_mask(mask, bk_value=None):

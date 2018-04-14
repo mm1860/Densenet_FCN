@@ -90,6 +90,7 @@ class MedImageLoader3D(DataLoader):
         self._batch_size = batch_size
         self._height = 512
         self._width = 512
+        self._channels = 1
 
         super(MedImageLoader3D, self).__init__(once, random)
  
@@ -100,6 +101,10 @@ class MedImageLoader3D(DataLoader):
     @property
     def width(self):
         return self._width
+
+    @property
+    def channels(self):
+        return self._channels
 
     def next_minibatch(self, db_inds):
         assert len(db_inds) == self.batch_size
@@ -114,7 +119,7 @@ class MedImageLoader3D(DataLoader):
             meta_data, liver = mhd_reader(image_file)
             mask = np.reshape(mask, (-1, self.height, self.width))
             mask = (mask / np.max(mask)).astype(np.int32)
-            image = np.reshape(image, (-1, self.height, self.width))
+            image = np.reshape(image, (-1, self.height, self.width, self.channels))
             # normalize to [-1, 1]
             image = np.clip(image / 1024.0, -1.0, 1.0)
             images.append(image)

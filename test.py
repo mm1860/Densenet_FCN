@@ -1,10 +1,11 @@
 import argparse
 import os.path as osp
 import sys
+from pprint import pprint
 
 import tensorflow as tf
 
-from config import cfg
+from config import cfg, update_cfg
 from fcn import FCN
 from solver import test_model_2D, test_model_3D
 from utils.logger import create_logger
@@ -26,6 +27,8 @@ def parse_args():
                         help="directory to store test output")
     parser.add_argument("--tag", dest="tag", default="default", type=str,
                         help="tag of the model directory")
+    parser.add_argument("--cfg", dest="cfg_file", default=None, type=str,
+                        help="extra configuration (it will cover default config in config.py)")
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -43,8 +46,11 @@ if __name__ == '__main__':
     logger.info("Args:")
     logger.info(args)
 
+    if args.cfg_file:
+        update_cfg(args.cfg_file)
     logger.info("Configuration: ")
-    logger.info(cfg)
+    for handler in logger.handlers:
+        pprint(cfg, handler.stream)
 
     model_path = osp.join(cfg.SRC_DIR, cfg.model_path or cfg.OUTPUT_DIR, args.tag)
     model_file = osp.join(model_path, "{:s}_iter_{:d}.ckpt".format(args.model, args.iter))

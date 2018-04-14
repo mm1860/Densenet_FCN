@@ -6,9 +6,9 @@ from tensorflow.contrib import slim as slim
 from config import cfg
 
 
-def PReLU(tensor_in:tf.Tensor, name=None):
+def prelu(tensor_in:tf.Tensor, name=None):
     with tf.variable_scope(name, "PReLU", [tensor_in]):
-        alpha = tf.get_variable("alpha", shape=tensor_in.get_shape(),
+        alpha = tf.get_variable("alpha", shape=tensor_in.get_shape()[-1],
                                 initializer=tf.constant_initializer(0.),
                                 dtype=tensor_in.dtype)
         pos = tf.nn.relu(tensor_in)
@@ -21,7 +21,6 @@ def PReLU(tensor_in:tf.Tensor, name=None):
 class DenseNet(object):
     def __init__(self, init_channels, num_blocks, num_layers_per_block, 
                     growth_rate=12, bc_mode=True):
-        self._tensor_in = tensor_in
         self._init_channels = init_channels
         self._num_blocks = num_blocks
         if isinstance(num_layers_per_block, int):
@@ -47,14 +46,23 @@ class DenseNet(object):
             out_channels = int(tensor_in.shape.as_list()[-1] * out_channels)
         with tf.variable_scope(name):
             # batch_norm need UPDATE_OPS
-            tensor_out = slim.batch_norm(tensor_in, is_training=training, activation_fn=PReLU)
+            if cfg.MODEL.ACTIVATION == "relu":
+                activation = tf.nn.relu
+            elif cfg.MODEL.ACTIVATION == "prelu":
+                activation = prelu
+            elif cfg.MODEL.ACTIVATION == "leaky_relu":
+                activation = tf.nn.leaky_relu
+            else:
+                raise ValueError("Unsupported activation function: %s" % cfg.MODEL.ACTIVATION)
+            
+            tensor_out = slim.batch_norm(tensor_in, scale=True, is_training=training, activation_fn=activation)
             tensor_out = slim.conv2d(tensor_out, out_channels, [kernel_size]*2)
             tensor_out = slim.dropout(tensor_out, self._keep_prob)
             
         return tensor_out
 
-    def _internal_layer(self, tensor_in, growth_rate, training=True, bc_mode=False, name=None):
-        with tf.variable_scope(name, "InternalLayer"):
+    def _internal_layer(self, tensor_in, growth_rate, training=True, bc_mode=False, scope=None):
+        with tf.variable_scope(scope, "InternalLayer"):
             if bc_mode:
                 bottleneck_out = self._unit_layer(tensor_in, growth_rate * 4, 1, "Bottleneck", training)
                 tensor_out = self._unit_layer(bottleneck_out, growth_rate, 3, "CompositeFunction", training)
@@ -65,18 +73,18 @@ class DenseNet(object):
 
         return tensor_out
 
-    def _transition_layer(self, tensor_in, out_channels, training=True, name=None):
+    def _transition_layer(self, tensor_in, out_channels, training=True, scope=None):
         raise NotImplementedError
 
-    def create_dense_layer(self, tensor_in):
+    def create_dense_layer(self, tensor_in, training=True):
+        tensor_out = tensor_in
         for i in range(self._num_blocks):
             with tf.variable_scope("DenseBlock%d" % (i + 1)):
-                tensor_out = slim.repeat(tensor_in, self._num_layers_per_block[i], self._internal_layer,
-                                        self._growth_rate, is_training, self._bc_mode)
+                tensor_out = slim.repeat(tensor_out, self._num_layers_per_block[i], self._internal_layer,
+                                        self._growth_rate, training, self._bc_mode)
                 self._act_summaries.append(tensor_out)
                 if i < self._num_blocks - 1:
-                    tensor_out = self._transition_layer(tensor_out, 0.5, is_training)
-
+                    tensor_out = self._transition_layer(tensor_out, 0.5, training=training)
         return tensor_out
 
     def _build_network(self, is_training=True, reuse=None, name=None):
@@ -95,6 +103,7 @@ class DenseNet(object):
 
             # add image summaries
             for image in self._image_summaries:
+                image = tf.cast(image, tf.float32, name="ToFloat32")
                 self.val_summaries.append(tf.summary.image("Image/" + image.op.name, image))
 
             # add losses
@@ -182,155 +191,10 @@ class DenseNet(object):
 
         return tf.reduce_mean(vd)
 
-    @staticmethod
-    def metric_3D(logtis3D, labels3D, surface=False, eps=1e-6, **kwargs):
-        """ Compute 3D metrics:  
-        * (Dice) Dice Coefficient
-        * (VOE)  Volumetric Overlap Error
-        * (VD)   Relative Volume Difference
-        * (ASD)  Average Symmetric Surface Distance
-        * (RMSD) Root Mean Square Symmetric Surface Distance
-        * (MSD)  Maximum Symmetric Surface Distance
-
-        Params
-        ------
-        `logits3D`: 3D binary prediction, shape is the same with `labels3D`, it should be 
-        a int array or boolean array.  
-        `labels3D`: 3D labels for segmentation, shape [batch_size, None, None, None, 1], it
-        shoule be a int array or boolean array.  
-        `surface`: `logits3D` and `labels3D` represent object surface or not  
-        `eps`: epsilon is set to avoid dividing zero  
-
-        Other key word arguments
-        ------
-        `sampling`: the pixel resolution or pixel size. This is entered as an n-vector
-        where n is equal to the number of dimensions in the segmentation i.e. 2D or 3D.
-        The default value is 1 which means pixls are 1x1x1 mm in size  
-        `connectivity`: creates either a 2D(3x3) or 3D(3x3x3) matirx defining the neghbour-
-        hood around which the function looks for neighbouring pixels. Typically, this is 
-        defined as a six-neighbour kernel which is the default behaviour of the function  
-        `require`: a string or a list of string to specify which metrics need to be return, 
-        default this function will return all the metrics listed above. If `surface` is set,
-        only ASD, RMSD and MSD can be computed. For example, if use
-        ```python
-        _metric_3D(logits3D, labels3D, require=["Dice", "VOE", "ASD"])
-        ```
-        then only these three metrics will be returned.
-
-        Note: `logtis3D` and `labels3D` are all the binary tensor with {0, 1}. If flag 
-        `surface` is set, then we ask two input tensors represent 3D object surface, which 
-        means that voxels on the surface are set to 1 while others (inside or outside the 
-        surface) are set to 0. If flag is not set, then `logits3D` and `labels3D` should
-        represent the whole object (solid segmentation).
-
-        Acknowledgement: Thanks to the code snippet from @MLNotebook's blog.
-        [Blog link](https://mlnotebook.github.io/post/surface-distance-function/).
-
-        Returns
-        -------
-        metrics required
-        """
-        metrics = ["Dice", "VOE", "VD", "ASD", "RMSD", "MSD"]
-        need_dist_map = False
-
-        required = kwargs.get("required", None)
-        if required is None:
-            required = metrics
-        elif isinstance(required, str):
-            required = [required]
-            if required[0] not in metrics:
-                raise ValueError("Not supported metric: %s" % required[0])
-            elif required in metrics[3:]:
-                need_dist_map = True
-            else:
-                need_dist_map = False
-
-        for req in required:
-            if req not in metrics:
-                raise ValueError("Not supported metric: %s" % req)
-            if (not need_dist_map) and req in metrics[3:]:
-                need_dist_map = True
-
-        assert logits3D.shape == labels3D.shape, "Shape mismatch of logits3D and labels3D." \
-                                    "Logits3D has shape %r while labels3D has shape %r" % (
-                                    logits3D.shape, labels3D.shape)
-        shape = logits3D.shape
-        logits3D = logits3D[...,0].astype(np.int32)
-        labels3D = labels3D[...,0].astype(np.int32)
-
-        metrics_3D = {}
-
-        if need_dist_map:
-            import math
-
-            if surface:
-                A = logtis3D
-                B = labels3D
-            else:
-                sampling = kwargs.get("sampling", [1., 1., 1.])
-                connectivity = kwargs.get("connectivity", 1)
-                disc = mph.generate_binary_structure(logtis3D.ndim, connectivity)
-
-                A = np.zeros_like(logits3D, np.int32)
-                B = np.zeros_like(labels3D, np.int32)
-                for i in range(len(A)):
-                    A[i] = logtis3D[i] - mph.binary_erosion(logtis3D[i], disc)
-                    B[i] = labels3D[i] - mph.binary_erosion(labels3D[i], disc)
-            
-            dist_mapA = np.zeros_like(A, np.float32)
-            dist_mapB = np.zeros_like(B, np.float32)
-            dist_A2B = np.zeros_like(dist_mapA, np.float32)
-            dist_B2A = np.zeros_like(dist_mapB, np.float32)
-            for i in range(len(A)):
-                dist_mapA[i] = mph.distance_transform_edt(~A[i], sampling)
-                dist_mapB[i] = mph.distance_transform_edt(~B[i], sampling)
-
-                dist_A2B[i] = dist_mapB[i][A != 0]
-                dist_B2A[i] = dist_mapA[i][B != 0]
-
-            ndims = len(A.shape)
-            reduce_axis = list(range(1, ndims))
-            sum_A_and_B = np.sum(A, reduce_axis) + np.sum(B, reduce_axis)
-            
-            if "ASD" in required:
-                asd = (np.sum(dist_A2B, reduce_axis) + np.sum(dist_B2A, reduce_axis)) / (sum_A_and_B + eps)
-                metrics_3D["ASD"] = np.mean(asd)
-                required.remove("ASD")
-            if "RMSD" in required:
-                rmsd = math.sqrt((np.sum(dist_A2B ** 2, reduce_axis) + np.sum(dist_B2A ** 2, reduce_axis)) / (sum_A_and_B + eps))
-                metrics_3D["RMSD"] = np.mean(rmsd)
-                required.remove("RMSD")
-            if "MSD" in required:
-                msd = np.maximum([np.max(dist_A2B, reduce_axis), np.max(dist_B2A, reduce_axis)])
-                metrics_3D["MSD"] = np.mean(msd)
-                required.remove("MSD")
-
-        if required != []:
-            logits3D = logits3D.astype(np.float32)
-            labels3D = labels3D.astype(np.float32)
-
-            intersection = np.sum(logits3D * labels3D, reduce_axis)
-            if "Dice" in required:
-                left = np.sum(logits3D, reduce_axis) ** 2
-                right = np.sum(labels3D, reduce_axis) ** 2
-                dice = (2 * intersection) / (left + right + eps)
-                metrics_3D["Dice"] = np.mean(dice)
-            if "VOE" in required:
-                denominator = np.sum(np.clip(logits3D + labels3D, 0, 1), reduce_axis)
-                voe = 100 * (1 - intersection / (denominator + eps))
-                metrics_3D["VOE"] = np.mean(voe)
-            if "VD" in required:
-                logits_sum = np.sum(logits3D, reduce_axis)
-                labels_sum = np.sum(labels3D, reduce_axis)
-                vd = 100 * (np.abs(logits3D - labels3D) / (labels_sum + eps))
-                metrics_3D["VD"] = np.mean(vd)
-
-        return metrics_3D
-
     def _add_2D_metries(self, name=None):
         logits = self._layers["Binary_Pred"]
         labels = self._mask
-        with tf.vairable_scope(name, "Metries_2D"):
+        with tf.variable_scope(name, "Metries_2D"):
             dice = self._metric_dice(logits, labels)
             voe = self._metric_VOE(logits, labels)
             vd = self._metric_VD(logits, labels)
@@ -342,7 +206,7 @@ class DenseNet(object):
 
     def _add_losses(self, name=None):
         with tf.variable_scope(name, "Loss"):
-            labels = tf.reshape(self._mask, shape=self._mask.shape[:-1])
+            labels = tf.squeeze(self._mask, axis=[-1])
             logits = self._layers["logits"]
             cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels, logits)
             self._losses["cross_entropy"] = cross_entropy
@@ -353,16 +217,16 @@ class DenseNet(object):
         return cross_entropy
 
     def create_architecture(self, mode, name=None):
-        shape = (cfg.TRAIN.BS, None, None, cfg.IMG.CHANNEL)
+        shape = (cfg.TRAIN.BS, cfg.IMG.HEIGHT, cfg.IMG.WIDTH, cfg.IMG.CHANNEL)
         self._image = tf.placeholder(tf.float32, shape, name="Image")
         self._mask = tf.placeholder(tf.int32, shape, name="Mask")
-        self._keep_prob = tf.placeholder(tf.float32, (1), name="KeepProb")
+        self._keep_prob = tf.placeholder(tf.float32, (), name="KeepProb")
         self._image_summaries.append(self._image)
         self._image_summaries.append(self._mask)
 
         self._mode = mode
         
-        weights_regularizer = tf.contrib.layers.l2_regularier(cfg.MODEL.WEIGHT_DECAY)
+        weights_regularizer = tf.contrib.layers.l2_regularizer(cfg.MODEL.WEIGHT_DECAY)
         if cfg.MODEL.WEIGHT_INITIALIZER == "trunc_norm":
             weights_initializer = tf.initializers.truncated_normal(mean=0.0, stddev=0.01)
         elif cfg.MODEL.WEIGHT_INITIALIZER == "rand_norm":
@@ -387,7 +251,8 @@ class DenseNet(object):
                             weights_regularizer=weights_regularizer,
                             weights_initializer=weights_initializer,
                             biases_regularizer=biases_regularizer,
-                            biases_initializer=biases_initializer):
+                            biases_initializer=biases_initializer,
+                            activation_fn=None):
             prediction = self._build_network(training, name=name)
         layers_out["prediction"] = prediction
 
@@ -444,3 +309,156 @@ class DenseNet(object):
         res = sess.run(fetches, feed_dict=feed_dict)
 
         return res
+
+
+def metric_3D(logits3D, labels3D, surface=False, eps=1e-6, **kwargs):
+    """ Compute 3D metrics:  
+    * (Dice) Dice Coefficient
+    * (VOE)  Volumetric Overlap Error
+    * (VD)   Relative Volume Difference
+    * (ASD)  Average Symmetric Surface Distance
+    * (RMSD) Root Mean Square Symmetric Surface Distance
+    * (MSD)  Maximum Symmetric Surface Distance
+
+    Params
+    ------
+    `logits3D`: 3D binary prediction, shape is the same with `labels3D`, it should be 
+    a int array or boolean array.  
+    `labels3D`: 3D labels for segmentation, shape [None, None, None], it
+    shoule be a int array or boolean array. If the dimensions of `logits3D` and `labels3D`
+    are greater than 3, then `np.squeeze` will be applied to remove extra single dimension
+    and then please make sure these two variables are still have 3 dimensions. For example, 
+    shape [None, None, None, 1] or [1, None, None, None, 1] are allowed.  
+    `surface`: `logits3D` and `labels3D` represent object surface or not  
+    `eps`: epsilon is set to avoid dividing zero  
+
+    Other key word arguments
+    ------
+    `sampling`: the pixel resolution or pixel size. This is entered as an n-vector
+    where n is equal to the number of dimensions in the segmentation i.e. 2D or 3D.
+    The default value is 1 which means pixls are 1x1x1 mm in size  
+    `connectivity`: creates either a 2D(3x3) or 3D(3x3x3) matirx defining the neghbour-
+    hood around which the function looks for neighbouring pixels. Typically, this is 
+    defined as a six-neighbour kernel which is the default behaviour of the function  
+    `require`: a string or a list of string to specify which metrics need to be return, 
+    default this function will return all the metrics listed above. If `surface` is set,
+    only ASD, RMSD and MSD can be computed. For example, if use
+    ```python
+    _metric_3D(logits3D, labels3D, require=["Dice", "VOE", "ASD"])
+    ```
+    then only these three metrics will be returned.
+
+    Note: `logtis3D` and `labels3D` are all the binary tensor with {0, 1}. If flag 
+    `surface` is set, then we ask two input tensors represent 3D object surface, which 
+    means that voxels on the surface are set to 1 while others (inside or outside the 
+    surface) are set to 0. If flag is not set, then `logits3D` and `labels3D` should
+    represent the whole object (solid segmentation).
+
+    Acknowledgement: Thanks to the code snippet from @MLNotebook's blog.
+    [Blog link](https://mlnotebook.github.io/post/surface-distance-function/).
+
+    Returns
+    -------
+    metrics required
+    """
+    metrics = ["Dice", "VOE", "VD", "ASD", "RMSD", "MSD"]
+    need_dist_map = False
+
+    required = kwargs.get("required", None)
+    if required is None:
+        required = metrics
+    elif isinstance(required, str):
+        required = [required]
+        if required[0] not in metrics:
+            raise ValueError("Not supported metric: %s" % required[0])
+        elif required in metrics[3:]:
+            need_dist_map = True
+        else:
+            need_dist_map = False
+
+    for req in required:
+        if req not in metrics:
+            raise ValueError("Not supported metric: %s" % req)
+        if (not need_dist_map) and req in metrics[3:]:
+            need_dist_map = True
+
+    shape = logits3D.shape
+    if logits3D.ndim > 3:
+        logits3D = np.squeeze(logits3D).astype(np.int32)
+    if labels3D.ndim > 3:
+        labels3D = np.squeeze(labels3D).astype(np.int32)
+
+    assert logits3D.shape == labels3D.shape, "Shape mismatch of logits3D and labels3D." \
+                                "Logits3D has shape %r while labels3D has shape %r" % (
+                                logits3D.shape, labels3D.shape)
+    metrics_3D = {}
+
+    if need_dist_map:
+        import math
+
+        if surface:
+            A = logtis3D
+            B = labels3D
+        else:
+            sampling = kwargs.get("sampling", [1., 1., 1.])
+            connectivity = kwargs.get("connectivity", 1)
+            disc = mph.generate_binary_structure(logits3D.ndim, connectivity)
+
+            A = logits3D - mph.binary_erosion(logits3D, disc)
+            B = labels3D - mph.binary_erosion(labels3D, disc)
+        
+        dist_mapA = mph.distance_transform_edt(np.logical_not(A), sampling)
+        dist_mapB = mph.distance_transform_edt(np.logical_not(B), sampling)
+
+        dist_A2B = dist_mapB[A != 0]
+        dist_B2A = dist_mapA[B != 0]
+
+        sum_A_and_B = np.sum(A) + np.sum(B)
+        
+        if "ASD" in required:
+            asd = (np.sum(dist_A2B) + np.sum(dist_B2A)) / (sum_A_and_B + eps)
+            metrics_3D["ASD"] = asd
+            required.remove("ASD")
+        if "RMSD" in required:
+            rmsd = math.sqrt((np.sum(dist_A2B ** 2) + np.sum(dist_B2A ** 2)) / (sum_A_and_B + eps))
+            metrics_3D["RMSD"] = rmsd
+            required.remove("RMSD")
+        if "MSD" in required:
+            msd = np.maximum(np.max(dist_A2B), np.max(dist_B2A))
+            metrics_3D["MSD"] = msd
+            required.remove("MSD")
+
+    if required != []:
+        logits3D = logits3D.astype(np.float32)
+        labels3D = labels3D.astype(np.float32)
+
+        intersection = np.sum(logits3D * labels3D)
+        if "Dice" in required:
+            dice = (2 * intersection) / (np.sum(logits3D) + np.sum(labels3D) + eps)
+            metrics_3D["Dice"] = dice
+        if "VOE" in required:
+            denominator = np.sum(np.clip(logits3D + labels3D, 0, 1))
+            voe = 100 * (1 - intersection / (denominator + eps))
+            metrics_3D["VOE"] = voe
+        if "VD" in required:
+            logits_sum = np.sum(logits3D)
+            labels_sum = np.sum(labels3D)
+            vd = 100 * (np.abs(np.sum(logits3D) - np.sum(labels3D)) / (labels_sum + eps))
+            metrics_3D["VD"] = vd
+
+    return metrics_3D
+
+if __name__ == "__main__":
+    # test metric_3D() function
+    from utils.Liver_Kits import mhd_reader
+    import matplotlib.pyplot as plt
+    mhd_file = "D:/DataSet/LiverQL/3Dircadb1_mhd/mask/A001_m.mhd"
+    meta, mask = mhd_reader(mhd_file)
+    mask = (mask / np.max(mask)).astype(np.int32)
+    disc = mph.generate_binary_structure(mask.ndim, 3)
+    logits = mph.binary_erosion(mask, disc, 2)
+    
+    metrics = metric_3D(logits, mask, sample=[1, 1, 1], connectivity=3)
+    for k, v in metrics.items():
+        print(k, v)
+    

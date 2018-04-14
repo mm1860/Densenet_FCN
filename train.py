@@ -2,8 +2,9 @@ import argparse
 import os
 import os.path as osp
 import sys
+from pprint import pprint
 
-from config import cfg
+from config import cfg, update_cfg
 from fcn import FCN
 from solver import train_model
 from utils.logger import create_logger
@@ -27,7 +28,9 @@ def parse_args():
                         help="tag of the model directory")
     parser.add_argument("--model", dest="model", default="default", type=str,
                         help="model prefix")
-    
+    parser.add_argument("--cfg", dest="cfg_file", default=None, type=str,
+                        help="extra configuration (it will cover default config in config.py)")
+
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -45,8 +48,11 @@ if __name__ == "__main__":
     logger.info("\nArgs:")
     logger.info(args)
 
+    if args.cfg_file:
+        update_cfg(args.cfg_file)
     logger.info("\nConfiguration: ")
-    logger.info(cfg)
+    for handler in logger.handlers:
+        pprint(cfg, handler.stream)
 
     # define network
     net = FCN(cfg.MODEL.INIT_CHANNELS,
