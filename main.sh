@@ -12,3 +12,4 @@ else
         --mode "2D"
         --output ""
         --cfg config/${CFG_FILE}
+fi
