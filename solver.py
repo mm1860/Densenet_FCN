@@ -215,7 +215,7 @@ class SolverWrapper(object):
                     sess, train_batch, train_op, cfg.TRAIN.KEEP_PROB, with_summary=True)
                 self.writer.add_summary(summary, float(iter))
                 val_batch = next(self.dataloader_val)
-                summary_val = self.net.get_val_summary(sess, cfg.TRAIN.KEEP_PROB, val_batch)
+                summary_val = self.net.get_val_summary(sess, val_batch, cfg.TRAIN.KEEP_PROB)
                 self.writer_val.add_summary(summary_val, float(iter))
                 last_summary_time = now
             else:
@@ -225,14 +225,15 @@ class SolverWrapper(object):
 
             # display step
             if iter % cfg.TRAIN.DISPLAY == 0:
-                self.logger.info("iter {:d}/{:d}, total loss: {:.6f}\n" + " " * 23 +
+                info = "iter {:d}/{:d}, total loss: {:.6f}\n" + " " * 23 +
                              ">>> cross entropy: {:.6f}\n" + " " * 23 +
                              ">>> metric Dice:   {:.2f}\n" + " " * 23 +
                              ">>> metric VOE:    {:.2f}\n" + " " * 23 +
                              ">>> metric VD:     {:.2f}\n" + " " * 23 +
-                             ">>>lr: {:f}".format(
-                    iter, max_iter, loss, cross_entropy, dice, voe, vd, lr.eval()
-                ))
+                             ">>>lr: {:f}"
+                info = info.format(
+                    iter, max_iters, loss, cross_entropy, dice, voe, vd, lr.eval()))
+                self.logger.info(info)
 
             # snapshot step
             if iter % cfg.TRAIN.SNAPSHOT_ITERS == 0:
@@ -341,16 +342,17 @@ def test_model_3D(sess, net:FCN, test_set, test_path, logger=None):
                 metrics[key].append(val)
         timer.toc()
 
-    logger.info("mean Dice: {:.3f}\n" + " " * 27 +
-                "mean VOE:  {:.3f}\n" + " " * 27 + 
-                "mean VD:   {:.3f}\n" + " " * 27 +
-                "mean ASD:  {:.3f}\n" + " " * 27 +
-                "mean RMSD: {:.3f}\n" + " " * 27 +
-                "mean MSD:  {:.3f}".format(
+    info = "mean Dice: {:.3f}\n" + " " * 27 +
+           "mean VOE:  {:.3f}\n" + " " * 27 + 
+           "mean VD:   {:.3f}\n" + " " * 27 +
+           "mean ASD:  {:.3f}\n" + " " * 27 +
+           "mean RMSD: {:.3f}\n" + " " * 27 +
+           "mean MSD:  {:.3f}"
+    info = info.format(
               np.mean(metrics["Dice"]), np.mean(metrics["VOE"]), np.mean(metrics["VD"]),
-              np.mean(metrics["ASD"]), np.mean(metrics["RMSD"]), np.mean(metrics["MSD"])
-         ))
- 
+              np.mean(metrics["ASD"]), np.mean(metrics["RMSD"]), np.mean(metrics["MSD"])))
+    logger.info(info)
+
 
 if __name__ == "__main__":
     # check computation graph

@@ -284,8 +284,8 @@ class DenseNet(object):
             loss, cross_entropy, dice, voe, vd, _ = sess.run(fetches, feed_dict=feed_dict)
             return loss, cross_entropy, dice, voe, vd
 
-    def get_val_summary(self, sess:tf.Session, keep_prob, data_batch):
-        feed_dict = {self._image: train_batch["images"], self._mask: train_batch["labels"],
+    def get_val_summary(self, sess:tf.Session, data_batch, keep_prob):
+        feed_dict = {self._image: data_batch["images"], self._mask: data_batch["labels"],
                     self._keep_prob: keep_prob}
         summary = sess.run(self._summary_op_val, feed_dict=feed_dict)
 

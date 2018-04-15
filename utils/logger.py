@@ -23,7 +23,8 @@ class MyFormatter(logging.Formatter):
         return s
 
 def create_logger(log_file=None, file_=True, console=True,
-                  withtime=False, file_level=2, console_level=2):
+                  withtime=False, file_level=2, console_level=2,
+                  propagate=False):
     """ Create a logger to write info to console and file.
     
     Params
@@ -68,6 +69,8 @@ def create_logger(log_file=None, file_=True, console=True,
         console_handler.setLevel(levels[console_level])
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
+
+    logger.propagate = propagate
 
     return logger
 
