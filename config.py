@@ -134,6 +134,9 @@ __C.MODEL.NUM_LAYERS_PER_BLOCK = 12
 # growth rate
 __C.MODEL.GROWTH_RATE = 12
 
+# compression
+__C.MODEL.THETA = 0.5
+
 # use bias or not
 __C.MODEL.USE_BIAS = False
 

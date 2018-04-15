@@ -84,7 +84,7 @@ class DenseNet(object):
                                         self._growth_rate, training, self._bc_mode)
                 self._act_summaries.append(tensor_out)
                 if i < self._num_blocks - 1:
-                    tensor_out = self._transition_layer(tensor_out, 0.5, training=training)
+                    tensor_out = self._transition_layer(tensor_out, cfg.MODEL.THETA, training=training)
         return tensor_out
 
     def _build_network(self, is_training=True, reuse=None, name=None):

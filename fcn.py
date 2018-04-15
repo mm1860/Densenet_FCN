@@ -47,11 +47,14 @@ class FCN(DenseNet):
 
             # Deconv block
             with tf.variable_scope("Deconv"):
-                tensor_out = slim.conv2d_transpose(tensor_out, 128, [2, 2], 2)
-                tensor_out = self._unit_layer(tensor_out, 64, 3, "DeconvUnit1")
-                tensor_out = slim.conv2d_transpose(tensor_out, 32, [2, 2], 2)
-                tensor_out = self._unit_layer(tensor_out, 16, 3, "DeconvUnit2")
-                tensor_out = slim.conv2d_transpose(tensor_out, 2, [2, 2], 2)
+                channels = tensor_out.get_shape()[-1]
+                for i in range(cfg.MODEL.BLOCKS):
+                    tensor_out = slim.conv2d_transpose(tensor_out, channels, [2, 2], 2, scope="DeconvLayer{:d}".format(i + 1))
+                    channels = channels // 2
+                    tensor_out = self._unit_layer(tensor_out, channels, 3, "UnitLayer{:d}".format(i + 1))
+                tensor_out = self._unit_layer(tensor_out, channels, 3, "UnitLayer{:d}".format(cfg.MODEL.BLOCKS + 1))
+                tensor_out = self._unit_layer(tensor_out, 2, 1, "UnitLayer{:d}".format(cfg.MODEL.BLOCKS + 2))
+
             self._act_summaries.append(tensor_out)
             self._layers["logits"] = tensor_out
             
