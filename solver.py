@@ -232,7 +232,7 @@ class SolverWrapper(object):
                              ">>> metric VD:     {:.2f}\n" + " " * 23 + \
                              ">>>lr: {:f}"
                 info = info.format(
-                    iter, max_iters, loss, cross_entropy, dice, voe, vd, lr.eval()))
+                    iter, max_iters, loss, cross_entropy, dice, voe, vd, lr.eval())
                 self.logger.info(info)
 
             # snapshot step
@@ -350,7 +350,7 @@ def test_model_3D(sess, net:FCN, test_set, test_path, logger=None):
            "mean MSD:  {:.3f}"
     info = info.format(
               np.mean(metrics["Dice"]), np.mean(metrics["VOE"]), np.mean(metrics["VD"]),
-              np.mean(metrics["ASD"]), np.mean(metrics["RMSD"]), np.mean(metrics["MSD"])))
+              np.mean(metrics["ASD"]), np.mean(metrics["RMSD"]), np.mean(metrics["MSD"]))
     logger.info(info)
 
 
