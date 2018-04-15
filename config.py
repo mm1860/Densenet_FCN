@@ -25,7 +25,7 @@ __C.LOG_DIR = "logs"
 __C.TAG = "default"
 
 # model prefix
-__C.MODEL = "default"
+__C.PREFIX = "default"
 
 # /////////////////////////////////////////////////////////////////
 __C.IMG = edict()

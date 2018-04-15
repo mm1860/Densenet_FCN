@@ -135,8 +135,8 @@ class DenseNet(object):
             labels = tf.cast(labels, tf.float32)
             
             intersection = tf.reduce_sum(logits * labels, axis=sum_axis)
-            left = tf.reduce_sum(logits, axis=sum_axis) ** 2
-            right = tf.reduce_sum(labels, axis=sum_axis) ** 2
+            left = tf.reduce_sum(logits, axis=sum_axis)
+            right = tf.reduce_sum(labels, axis=sum_axis)
             dice = (2 * intersection) / (left + right + eps)
 
         return tf.reduce_mean(dice)

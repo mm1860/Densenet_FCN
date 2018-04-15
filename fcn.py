@@ -57,7 +57,7 @@ class FCN(DenseNet):
             
             softmax_tensor_out = slim.softmax(tensor_out)
             with tf.name_scope("Prediction"):
-                prediction = softmax_tensor_out[..., 1]
+                _, prediction = tf.split(softmax_tensor_out, 2, -1)
                 self._layers["Prediction"] = prediction
                 self._image_summaries.append(prediction)
 

@@ -193,11 +193,11 @@ class SolverWrapper(object):
         timer = Timer()
         iter = last_snapshot_iter + 1
         last_summary_time = time.time()
-        lr_step.append(max_iter)
+        lr_step.append(max_iters)
         lr_step.reverse()
         next_lr_step = lr_step.pop()
         
-        while iter < max_iter + 1:
+        while iter < max_iters + 1:
             # learning rate
             if iter == next_lr_step + 1:
                 self._snapshot(sess, iter)
@@ -225,12 +225,12 @@ class SolverWrapper(object):
 
             # display step
             if iter % cfg.TRAIN.DISPLAY == 0:
-                self.logger.info("iter {:d}/{:d}, total loss: {:.6f}\n"
-                                 " >>> cross entropy: {:.6f}\n"
-                                 " >>> metric Dice:   {:.2f}\n"
-                                 " >>> metric VOE:    {:.2f}\n"
-                                 " >>> metric VD:     {:.2f}\n"
-                                 " >>>lr: {:f}".format(
+                self.logger.info("iter {:d}/{:d}, total loss: {:.6f}\n" + " " * 23 +
+                             ">>> cross entropy: {:.6f}\n" + " " * 23 +
+                             ">>> metric Dice:   {:.2f}\n" + " " * 23 +
+                             ">>> metric VOE:    {:.2f}\n" + " " * 23 +
+                             ">>> metric VD:     {:.2f}\n" + " " * 23 +
+                             ">>>lr: {:f}".format(
                     iter, max_iter, loss, cross_entropy, dice, voe, vd, lr.eval()
                 ))
 
@@ -274,7 +274,7 @@ def train_model(network, train_set, val_set, output_dir, tb_dir,
     with tf.Session(config=tfconfig) as sess:
         logger = logger or create_logger(file_=False)
         solver = SolverWrapper(network, train_set, val_set, output_dir, tb_dir, model_name, logger)
-        logger.info("\nBegin training...")
+        logger.info("Begin training...")
         solver.train_model(sess, max_iters)
         logger.info("Training done!")
 
@@ -310,7 +310,7 @@ def test_model_2D(sess, net:FCN, test_set, test_path, logger=None):
     mean_dice = np.mean(total_dice)
     mean_voe = np.mean(total_voe)
     mean_vd = np.mean(total_vd)
-    logger.info("\n mean dice: {:.3f}\n mean_voe: {:.3f}\n mean_vd: {:.3f}".format(
+    logger.info("mean dice: {:.3f}\n" + " " * 27 + "mean_voe: {:.3f}" + " " * 27 + "mean_vd: {:.3f}".format(
         mean_dice, mean_voe, mean_vd
     ))
 
@@ -341,9 +341,12 @@ def test_model_3D(sess, net:FCN, test_set, test_path, logger=None):
                 metrics[key].append(val)
         timer.toc()
 
-    logger.info("\n mean Dice: {:.3f}\n mean VOE:  {:.3f}"
-                "\n mean VD:   {:.3f}\n mean ASD:  {:.3f}"
-                "\n mean RMSD: {:.3f}\n mean MSD:  {:.3f}\n".format(
+    logger.info("mean Dice: {:.3f}\n" + " " * 27 +
+                "mean VOE:  {:.3f}\n" + " " * 27 + 
+                "mean VD:   {:.3f}\n" + " " * 27 +
+                "mean ASD:  {:.3f}\n" + " " * 27 +
+                "mean RMSD: {:.3f}\n" + " " * 27 +
+                "mean MSD:  {:.3f}".format(
               np.mean(metrics["Dice"]), np.mean(metrics["VOE"]), np.mean(metrics["VD"]),
               np.mean(metrics["ASD"]), np.mean(metrics["RMSD"]), np.mean(metrics["MSD"])
          ))

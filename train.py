@@ -32,10 +32,10 @@ if __name__ == "__main__":
     logdir = osp.join(cfg.SRC_DIR, cfg.LOG_DIR)
     if not osp.exists(logdir):
         os.makedirs(logdir)
-    logfile = osp.join(logdir, "train_%s_%s_iter_%d" % (cfg.TAG, cfg.MODEL, cfg.TRAIN.MAX_ITERS))
+    logfile = osp.join(logdir, "train_%s_%s_iter_%d" % (cfg.TAG, cfg.PREFIX, cfg.TRAIN.MAX_ITERS))
     logger = create_logger(log_file=logfile, withtime=True)
 
-    logger.info("\nConfiguration: ")
+    logger.info("Configuration: ")
     for handler in logger.handlers:
         pprint(cfg, handler.stream)
 
@@ -48,13 +48,13 @@ if __name__ == "__main__":
               name="FCN-DenseNet")
     
     # define output directory
-    output_dir = osp.join(cfg.SRC_DIR, cfg.OUTPUT_DIR, args.tag)
+    output_dir = osp.join(cfg.SRC_DIR, cfg.OUTPUT_DIR, cfg.TAG)
     if not osp.exists(output_dir):
         os.makedirs(output_dir)
 
     # define tensorboard directory
-    tb_dir = osp.join(cfg.SRC_DIR, cfg.TB_DIR, args.tag)
+    tb_dir = osp.join(cfg.SRC_DIR, cfg.TB_DIR, cfg.TAG)
     if not osp.exists(tb_dir):
         os.makedirs(tb_dir)
 
-    train_model(net, cfg.DATA.TRAINSET, cfg.DATA.VALSET, output_dir, tb_dir, args.model, cfg.TRAIN.MAX_ITERS)
+    train_model(net, cfg.DATA.TRAINSET, cfg.DATA.VALSET, output_dir, tb_dir, cfg.PREFIX, cfg.TRAIN.MAX_ITERS)

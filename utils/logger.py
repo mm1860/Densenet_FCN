@@ -50,7 +50,7 @@ def create_logger(log_file=None, file_=True, console=True,
             os.remove(log_file)
 
     logger = logging.getLogger()
-    logger.setLevel(levels[0])
+    logger.setLevel(levels[2])
 
     formatter = MyFormatter("%(asctime)s: %(levelname).1s %(message)s")
 

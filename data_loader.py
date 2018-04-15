@@ -28,6 +28,7 @@ class MedImageLoader2D(DataLoader):
         for path in self._db_path[1:]:
             self._images.extend(get_mhd_list_with_liver(osp.join(path, "mask")))
         self._batch_size = batch_size
+        self._img_channel = img_channel
         self._height = 512
         self._width = 512
 
@@ -41,20 +42,24 @@ class MedImageLoader2D(DataLoader):
     def width(self):
         return self._width
 
+    @property
+    def channel(self):
+        return self._img_channel
+
     def next_minibatch(self, db_inds):
         assert len(db_inds) == self._batch_size
 
-        images = np.zeros((self._batch_size, self.height, self.width, img_channel), 
+        images = np.zeros((self._batch_size, self.height, self.width, self.channel), 
                             dtype=np.float32)
-        masks = np.zeros_like(image, dtype=np.int32)
+        masks = np.zeros_like(images, dtype=np.int32)
         image_names = []
         for i, ind in enumerate(db_inds):
             mask_file = self.images[ind]
             image_file = mask_file.replace("mask", "liver").replace("_m_", "_o_")
             _, mask = mhd_reader(mask_file)
-            _, image = mhd_reader(image_filea)
-            mask = np.reshape(mask, (self.height, self.width, img_channel))
-            image = np.reshape(image, (self.height, self.width, img_channel))
+            _, image = mhd_reader(image_file)
+            mask = np.reshape(mask, (self.height, self.width, self.channel))
+            image = np.reshape(image, (self.height, self.width, self.channel))
             masks[i,...] = (mask / np.max(mask)).astype(np.int32)
             images[i,...] = image
 

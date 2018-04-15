@@ -118,7 +118,7 @@ def get_mhd_list_with_liver(SrcDir, verbose=False):
         print("mhd list loaded from {}".format(cache_file))
         return keep_mhd_list
     
-    all_mhd_list, all_mhd_length = get_mhd_list(SrcDir)
+    all_mhd_list = get_mhd_list(SrcDir)
     keep_mhd_list = []
     for mhdfile in all_mhd_list:
         if verbose:

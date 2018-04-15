@@ -36,15 +36,15 @@ if __name__ == '__main__':
     logdir = osp.join(cfg.SRC_DIR, cfg.LOG_DIR)
     if not osp.exists(logdir):
         os.makedirs(logdir)
-    logfile = osp.join(logdir, "train_%s_%s_iter_%d" % (cfg.TAG, cfg.MODEL, cfg.TRAIN.MAX_ITERS))
+    logfile = osp.join(logdir, "train_%s_%s_iter_%d" % (cfg.TAG, cfg.PREFIX, cfg.TRAIN.MAX_ITERS))
     logger = create_logger(log_file=logfile, withtime=True)
 
     logger.info("Configuration: ")
     for handler in logger.handlers:
         pprint(cfg, handler.stream)
 
-    model_path = osp.join(cfg.SRC_DIR, cfg.TAG or cfg.OUTPUT_DIR, args.tag)
-    model_file = osp.join(model_path, "{:s}_iter_{:d}.ckpt".format(cfg.MODEL, cfg.TEST.ITER))
+    model_path = osp.join(cfg.SRC_DIR, cfg.TAG or cfg.OUTPUT_DIR, cfg.TAG)
+    model_file = osp.join(model_path, "{:s}_iter_{:d}.ckpt".format(cfg.PREFIX, cfg.TEST.ITER))
 
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
     tfconfig.gpu_options.allow_growth = True
@@ -72,9 +72,9 @@ if __name__ == '__main__':
     
     test_path = osp.join(cfg.SRC_DIR, args.output) if args.output else None
     if args.mode == "2D":
-        test_model_2D(sess, net, args.test_set, test_path)
+        test_model_2D(sess, net, cfg.DATA.TESTSET, test_path)
     elif args.mode == "3D":
-        test_model_3D(sess, net, args.test_set, test_path)
+        test_model_3D(sess, net, cfg.DATA.TESTSET, test_path)
     else:
         raise ValueError("Only support 2D and 3D test routine.")
 
