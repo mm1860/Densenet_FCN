@@ -21,6 +21,12 @@ __C.TB_DIR = "tensorboard"
 # default logging directory
 __C.LOG_DIR = "logs"
 
+# tag of model directory
+__C.TAG = "default"
+
+# model prefix
+__C.MODEL = "default"
+
 # /////////////////////////////////////////////////////////////////
 __C.IMG = edict()
 
@@ -63,6 +69,9 @@ __C.TRAIN.LR = 0.01
 # learning rate decay rate
 __C.TRAIN.LR_DECAY = 0.1
 
+# max iterations
+__C.TRAIN.MAX_ITERS = 150000
+
 # momentum
 __C.TRAIN.MOMENTUM = 0.9
 
@@ -95,6 +104,9 @@ __C.TEST.BS_2D = 64
 # 1 is the best choice
 __C.TEST.BS_3D = 1
 
+# test mode, use which iteration of models
+__C.TEST.ITER = __C.TRAIN.MAX_ITERS
+
 # /////////////////////////////////////////////////////////////////
 __C.MODEL = edict()
 
@@ -108,7 +120,7 @@ __C.MODEL.ACTIVATION = "relu"
 __C.MODEL.BIAS_DECAY = False
 
 # weight decay
-__C.MODEL.WEIGHT_DECAY = 0.001
+__C.MODEL.WEIGHT_DECAY = 1e-3
 
 # output channels of the first convolutional layer
 __C.MODEL.INIT_CHANNELS = 24

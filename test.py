@@ -12,21 +12,11 @@ from utils.logger import create_logger
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Test a FCN-DenseNet network")
-    parser.add_argument("--model", dest="model", required=True, type=str,
-                        help="model to test")
-    parser.add_argument("--model_path", dest="model_path", default=None, type=str,
-                        help="directory to store all models")
-    parser.add_argument("--testset", dest="test_set", default=cfg.DATA.TESTSET, type=str,
-                        help="dataset for testing")
-    parser.add_argument("--iter", dest="iter", required=True, type=int,
-                        help="which checkpoint to load, identified by iter")
     parser.add_argument("--mode", dest="mode", default="2D", type=str, 
                         choices=["2D", "3D"],
                         help="test mode (2D/3D image, default is 2D)")
     parser.add_argument("--output", dest="output", default=None, type=str,
                         help="directory to store test output")
-    parser.add_argument("--tag", dest="tag", default="default", type=str,
-                        help="tag of the model directory")
     parser.add_argument("--cfg", dest="cfg_file", default=None, type=str,
                         help="extra configuration (it will cover default config in config.py)")
 
@@ -40,20 +30,21 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
     
-    logfile = osp.join(cfg.LOG_DIR, "test_%s_%s_iter_%d" % (args.rag, args.model, args.iter))
-    logger = create_logger(log_file=log_file, withtime=True)
-
-    logger.info("Args:")
-    logger.info(args)
-
     if args.cfg_file:
         update_cfg(args.cfg_file)
+ 
+    logdir = osp.join(cfg.SRC_DIR, cfg.LOG_DIR)
+    if not osp.exists(logdir):
+        os.makedirs(logdir)
+    logfile = osp.join(logdir, "train_%s_%s_iter_%d" % (cfg.TAG, cfg.MODEL, cfg.TRAIN.MAX_ITERS))
+    logger = create_logger(log_file=logfile, withtime=True)
+
     logger.info("Configuration: ")
     for handler in logger.handlers:
         pprint(cfg, handler.stream)
 
-    model_path = osp.join(cfg.SRC_DIR, cfg.model_path or cfg.OUTPUT_DIR, args.tag)
-    model_file = osp.join(model_path, "{:s}_iter_{:d}.ckpt".format(args.model, args.iter))
+    model_path = osp.join(cfg.SRC_DIR, cfg.TAG or cfg.OUTPUT_DIR, args.tag)
+    model_file = osp.join(model_path, "{:s}_iter_{:d}.ckpt".format(cfg.MODEL, cfg.TEST.ITER))
 
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
     tfconfig.gpu_options.allow_growth = True
