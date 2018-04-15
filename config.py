@@ -132,7 +132,7 @@ __C.MODEL.BLOCKS = 3
 __C.MODEL.NUM_LAYERS_PER_BLOCK = 12
 
 # growth rate
-__C.MODEL.GROWTH_RATE = 12
+__C.MODEL.GROWTH_RATE = [12]
 
 # compression
 __C.MODEL.THETA = 0.5
