@@ -225,11 +225,11 @@ class SolverWrapper(object):
 
             # display step
             if iter % cfg.TRAIN.DISPLAY == 0:
-                info = "iter {:d}/{:d}, total loss: {:.6f}\n" + " " * 23 +
-                             ">>> cross entropy: {:.6f}\n" + " " * 23 +
-                             ">>> metric Dice:   {:.2f}\n" + " " * 23 +
-                             ">>> metric VOE:    {:.2f}\n" + " " * 23 +
-                             ">>> metric VD:     {:.2f}\n" + " " * 23 +
+                info = "iter {:d}/{:d}, total loss: {:.6f}\n" + " " * 23 + \
+                             ">>> cross entropy: {:.6f}\n" + " " * 23 + \
+                             ">>> metric Dice:   {:.2f}\n" + " " * 23 + \
+                             ">>> metric VOE:    {:.2f}\n" + " " * 23 + \
+                             ">>> metric VD:     {:.2f}\n" + " " * 23 + \
                              ">>>lr: {:f}"
                 info = info.format(
                     iter, max_iters, loss, cross_entropy, dice, voe, vd, lr.eval()))
@@ -342,11 +342,11 @@ def test_model_3D(sess, net:FCN, test_set, test_path, logger=None):
                 metrics[key].append(val)
         timer.toc()
 
-    info = "mean Dice: {:.3f}\n" + " " * 27 +
-           "mean VOE:  {:.3f}\n" + " " * 27 + 
-           "mean VD:   {:.3f}\n" + " " * 27 +
-           "mean ASD:  {:.3f}\n" + " " * 27 +
-           "mean RMSD: {:.3f}\n" + " " * 27 +
+    info = "mean Dice: {:.3f}\n" + " " * 27 + \
+           "mean VOE:  {:.3f}\n" + " " * 27 + \
+           "mean VD:   {:.3f}\n" + " " * 27 + \
+           "mean ASD:  {:.3f}\n" + " " * 27 + \
+           "mean RMSD: {:.3f}\n" + " " * 27 + \
            "mean MSD:  {:.3f}"
     info = info.format(
               np.mean(metrics["Dice"]), np.mean(metrics["VOE"]), np.mean(metrics["VD"]),
