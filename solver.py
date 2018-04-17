@@ -8,12 +8,11 @@ import cv2
 import numpy as np
 import tensorflow as tf
 
-from config import cfg
+from config import cfg, global_logger
 from data_loader import MedImageLoader2D, MedImageLoader3D
 from fcn import FCN
 from networks import metric_3D
 from utils.timer import Timer
-from utils.logger import create_logger
 
 try:
     import cPickle as pickle
@@ -26,8 +25,7 @@ class SolverWrapper(object):
     """ A wrapper class for solver
     """
     def __init__(self, network:FCN, train_set, val_set, output_dir, tbdir, 
-                model_name="default",
-                logger=None):
+                model_name="default"):
         self.net = network
         self.train_set = train_set
         self.val_set = val_set
@@ -35,7 +33,7 @@ class SolverWrapper(object):
         self.tbdir = tbdir
         self.tbvaldir = tbdir + "_val"
         self.model_prefix = model_name
-        self.logger = logger or create_logger(file_=False)
+        self.logger = global_logger(cfg.LOGGER)
 
     def _construct_graph(self, sess:tf.Session):
         with sess.graph.as_default():
@@ -47,7 +45,8 @@ class SolverWrapper(object):
             losses = layers["total_loss"]
             # set learning rate and momentum
             lr = tf.Variable(cfg.TRAIN.LR, trainable=False)
-            optimizer = tf.train.MomentumOptimizer(lr, cfg.TRAIN.MOMENTUM)
+            optimizer = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.99)
+            #optimizer = tf.train.MomentumOptimizer(lr, cfg.TRAIN.MOMENTUM)
             
             # compute gradients
             update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -92,7 +91,7 @@ class SolverWrapper(object):
         sfilename = self.model_prefix + "_iter_{:d}.ckpt".format(iter)
         sfilename = osp.join(self.output_dir, sfilename)
         self.saver.save(sess, sfilename)
-        logger.info("Write snapshot to {:s}".format(sfilename))
+        self.logger.info("Write snapshot to {:s}".format(sfilename))
 
         nfilename = self.model_prefix + "_iter_{:d}.pkl".format(iter)
         nfilename = osp.join(self.output_dir, nfilename)
@@ -103,13 +102,14 @@ class SolverWrapper(object):
             pickle.dump(self.dataloader._perm, fid, pickle.HIGHEST_PROTOCOL)
             pickle.dump(self.dataloader_val._cur, fid, pickle.HIGHEST_PROTOCOL)
             pickle.dump(self.dataloader_val._perm, fid, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(iter, fid, pickle.HIGHEST_PROTOCOL)
 
         return sfilename, nfilename
 
     def _from_snapshot(self, sess, sfile, nfile):
-        logger.info('Restoring model snapshots from {:s}'.format(sfile))
+        self.logger.info('Restoring model snapshots from {:s}'.format(sfile))
         self.saver.restore(sess, sfile)
-        logger.info('Restored.')
+        self.logger.info('Restored.')
         # Needs to restore the other hyper-parameters/states for training, (TODO xinlei) I have
         # tried my best to find the random states so that it can be recovered exactly
         # However the Tensorflow state is currently not available
@@ -164,7 +164,7 @@ class SolverWrapper(object):
         np_paths = [nfile]
         ss_paths = [sfile]
         # restore model
-        last_snapshot_iter = self._restore(sess, sfile, nfile)
+        last_snapshot_iter = self._from_snapshot(sess, sfile, nfile)
         # learning rate
         rate = cfg.TRAIN.LR
         lr_step = []
@@ -178,8 +178,12 @@ class SolverWrapper(object):
 
     def train_model(self, sess, max_iters):
         # build data layer
-        self.dataloader = MedImageLoader2D(cfg.DATA.ROOT_DIR, self.train_set, cfg.TRAIN.BS)
-        self.dataloader_val = MedImageLoader2D(cfg.DATA.ROOT_DIR, self.val_set, cfg.TRAIN.BS, random=True)
+        self.dataloader = MedImageLoader2D(cfg.DATA.ROOT_DIR, self.train_set, cfg.TRAIN.BS, 
+                                           wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL)
+        self.dataloader_val = MedImageLoader2D(cfg.DATA.ROOT_DIR, self.val_set, cfg.TRAIN.BS, 
+                                               wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, random=True)
+        self.dataloader_val_total = MedImageLoader2D(cfg.DATA.ROOT_DIR, self.val_set, cfg.TRAIN.BS,
+                                                     wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, random=True)
 
         # construct graph
         lr, train_op = self._construct_graph(sess)
@@ -208,7 +212,6 @@ class SolverWrapper(object):
             # train step            
             timer.tic()
             train_batch = next(self.dataloader)
-
             now = time.time()
             if iter == 1 or now - last_summary_time > cfg.TRAIN.SUMMARY_INTERVAL:
                 loss, cross_entropy, dice, voe, vd, summary = self.net.train_step(
@@ -226,13 +229,35 @@ class SolverWrapper(object):
             # display step
             if iter % cfg.TRAIN.DISPLAY == 0:
                 info = "iter {:d}/{:d}, total loss: {:.6f}\n" + " " * 23 + \
-                             ">>> cross entropy: {:.6f}\n" + " " * 23 + \
-                             ">>> metric Dice:   {:.2f}\n" + " " * 23 + \
-                             ">>> metric VOE:    {:.2f}\n" + " " * 23 + \
-                             ">>> metric VD:     {:.2f}\n" + " " * 23 + \
-                             ">>>lr: {:f}"
+                       ">>> cross entropy: {:.6f}\n" + " " * 23 + \
+                       ">>> metric Dice:   {:.2f}\n" + " " * 23 + \
+                       ">>> metric VOE:    {:.2f}\n" + " " * 23 + \
+                       ">>> metric VD:     {:.2f}\n" + " " * 23 + \
+                       ">>> lr: {:f}"
                 info = info.format(
                     iter, max_iters, loss, cross_entropy, dice, voe, vd, lr.eval())
+                self.logger.info(info)
+                self.logger.info("speed: {:.3f}s / iter".format(timer.average_time))
+
+            # validation step
+            if cfg.VAL.NEED and iter % cfg.VAL.STEPS == 0:
+                all_dice = []
+                all_voe = []
+                all_vd = []
+                for i in range(cfg.VAL.NUMBER):
+                    val_batch = next(self.dataloader_val_total)
+                    dice, voe, vd = self.net.test_step_2D(sess, val_batch, 1.0)
+                    all_dice.append(dice)
+                    all_voe.append(voe)
+                    all_vd.append(vd)
+                mean_dice = np.mean(all_dice)
+                mean_voe = np.mean(all_voe)
+                mean_vd = np.mean(all_vd)
+                info = "Validation ...\n" + " " * 23 + \
+                       ">>> mean Dice: {:.2f}\n" + " " * 23 + \
+                       ">>> mean VOE:  {:.2f}\n" + " " * 23 + \
+                       ">>> mean VD:   {:.2f}"
+                info = info.format(dice, voe, vd)
                 self.logger.info(info)
 
             # snapshot step
@@ -254,8 +279,7 @@ class SolverWrapper(object):
 
 def train_model(network, train_set, val_set, output_dir, tb_dir, 
                 model_name="default", 
-                max_iters=100000,
-                logger=None):
+                max_iters=100000):
     """ Entry of training model
     
     Params
@@ -273,24 +297,43 @@ def train_model(network, train_set, val_set, output_dir, tb_dir,
     tfconfig.gpu_options.allow_growth = True
 
     with tf.Session(config=tfconfig) as sess:
-        logger = logger or create_logger(file_=False)
-        solver = SolverWrapper(network, train_set, val_set, output_dir, tb_dir, model_name, logger)
+        logger = global_logger(cfg.LOGGER)
+        solver = SolverWrapper(network, train_set, val_set, output_dir, tb_dir, model_name)
         logger.info("Begin training...")
         solver.train_model(sess, max_iters)
         logger.info("Training done!")
 
-def save_prediction(prediction, test_path, test_names):
-    for i, slice in enumerate(prediction):
-        image = (prediction * 255).astype(np.uint8)
-        save_path = osp.join(test_path, test_names[i].replace(".mhd", ".jpg"))
-        cv2.imwrite(save_path, image)
+def save_prediction(prediction, test_path, test_names, mode):
+    if mode == "2D": # 4D tensor
+        for i, slice in enumerate(prediction):
+            image = (slice * 255).astype(np.uint8)
+            save_path = osp.join(test_path, test_names[i].replace(".mhd", ".jpg"))
+            try:
+                cv2.imwrite(save_path, image)
+            except cv2.error as e:
+                print("Got error: {:s}".format(e))
+    elif mode == "3D":  # 5D tensor, the shape of last dim must be 1
+        prediction = np.squeeze(prediction, axis=-1)
+        for i, volume in enumerate(prediction):
+            pass
 
-def test_model_2D(sess, net:FCN, test_set, test_path, logger=None):
+
+def test_model_2D(sess, net:FCN, test_set, test_path):
     np.random.seed(cfg.RNG_SEED)
-    logger = logger or create_logger(file_=False)
+    logger = global_logger(cfg.LOGGER)
     
-    dataloader = MedImageLoader2D(cfg.DATA.ROOT_DIR, test_set, cfg.TEST.BS_2D, once=True)
-    ret_image = "Prediction" if test_path else False
+    dataloader = MedImageLoader2D(cfg.DATA.ROOT_DIR, test_set, cfg.TEST.BS_2D, 
+                                  wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, once=True)
+    if test_path:
+        if "prob" in cfg.VAL.MAP.lower():
+            ret_image = "Prediction"
+        elif "bin" in cfg.VAL.MAP.lower():
+            ret_image = "Binary_Pred"
+        else:
+            raise ValueError("Wrong validation map type ({:s})."
+                             " Please choice from [probability, binary].".format(cfg.VAL.MAP))
+    else:
+        ret_image = False
 
     timer = Timer()
 
@@ -299,55 +342,115 @@ def test_model_2D(sess, net:FCN, test_set, test_path, logger=None):
     total_vd = []
     for test_batch in dataloader:
         timer.tic()
-        pred, dice, voe, vd = net.test_step_2D(sess, test_batch, keep_prob=1.0, ret_image=ret_image)
+        logger.info("Processing image: {:s}".format(test_batch["names"][0].replace("_p", "").replace(".mhd", "")))
+        result = net.test_step_2D(sess, test_batch, keep_prob=1.0, ret_image=ret_image)
+
+        if ret_image:
+            save_prediction(result[0], test_path, test_batch["names"], mode="2D")
+            result = result[1:]
+        
+        info = "batch Dice: {:.3f}\n" + \
+               " " * 23 + ">>> batch VOE:  {:.3f}\n" + \
+               " " * 23 + ">>> batch VD:   {:.3f}"
+        logger.info(info.format(*result))
         timer.toc()
 
-        total_dice.append(dice)
-        total_voe.append(voe)
-        total_vd.append(vd)
-
-        save_prediction(pred, test_path, test_batch["names"])
+        total_dice.append(result[0])
+        total_voe.append(result[1])
+        total_vd.append(result[2])
 
     mean_dice = np.mean(total_dice)
     mean_voe = np.mean(total_voe)
     mean_vd = np.mean(total_vd)
-    logger.info("mean dice: {:.3f}\n" + " " * 27 + "mean_voe: {:.3f}" + " " * 27 + "mean_vd: {:.3f}".format(
-        mean_dice, mean_voe, mean_vd
-    ))
+    info = "mean dice: {:.3f}\n" + \
+           " " * 23 + ">>> mean_voe:  {:.3f}\n" + \
+           " " * 23 + ">>> mean_vd:   {:.3f}"
+    info = info.format(mean_dice, mean_voe, mean_vd)
+    logger.info(info)
 
-def test_model_3D(sess, net:FCN, test_set, test_path, logger=None):
+def test_model_3D(sess, net:FCN, test_set, test_path):
     np.random.seed(cfg.RNG_SEED)
-    logger = logger or create_logger(file_=False)
+    logger = global_logger(cfg.LOGGER)
 
-    dataloader = MedImageLoader3D(cfg.DATA.ROOT_DIR, test_set, cfg.TEST.BS_3D, once=True)
-    ret_image = "Binary_Pred" if test_path else False
+    dataloader = MedImageLoader3D(cfg.DATA.ROOT_DIR, test_set, cfg.TEST.BS_3D,
+                                  wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, once=True)
+    if test_path:
+        if "prob" in cfg.VAL.MAP.lower():
+            ret_image = "Prediction"
+        elif "bin" in cfg.VAL.MAP.lower():
+            ret_image = "Binary_Pred"
+        else:
+            raise ValueError("Wrong validation map type ({:s})."
+                             " Please choice from [probability, binary].".format(cfg.VAL.MAP))
+    else:
+        ret_image = False
 
     timer = Timer()
 
     metrics = ddict(list)
+    bs = cfg.TEST.BS_2D
     for test_volumes in dataloader:
         timer.tic()
-        for i in range(len(test_volumes["images"])):
-            logits3D = np.zeros_like(test_volumes["images"][i], np.int32)
-            for j in range(0, len(test_volumes["image"][i]) - cfg.TEST.BS, cfg.TEST.BS):
-                test_batch = {"images": test_volumes["images"][i][j:j + cfg.TEST.BS],
-                              "labels": test_volumes["labels"][i][j:j + cfg.TEST.BS]}
+        for test_image, test_label, test_name, test_meta in zip(test_volumes["images"], 
+                                                                test_volumes["labels"], 
+                                                                test_volumes["names"],
+                                                                test_volumes["meta"]):
+            logger.info("Processing image: {:s}".format(test_name[:-6]))
+            logits3D = np.zeros_like(test_image, np.float32)
+            for j in range(0, len(test_image) - bs + 1, bs):
+                test_batch = {"images": test_image[j:j + bs],
+                              "labels": test_label[j:j + bs]}
                 pred = net.test_step_2D(sess, test_batch, keep_prob=1.0, ret_image=ret_image, ret_metrics=False)
-                logits3D[j:j + cfg.TEST.BS] = pred
-        
+                logits3D[j:j + bs] = pred[0]
+            
+            last = len(test_image) % bs
+            if last != 0:
+                j = len(test_image) - last
+                # because now network need fixed batch size, we need fill BS_2D with zeros
+                #remainder, times = bs % last, bs // last
+                images = np.zeros((bs,) + test_image.shape[1:], dtype=test_image.dtype)
+                labels = np.zeros_like(images)
+                images[:last] = test_image[j:]
+                labels[:last] = test_label[j:]
+                #for k in range(times):
+                #   images[2*k:2*k+2] = test_volume[j:]
+                #if remainder > 0:
+                #    k = bs - remainder
+                #    images[k:] = test_volume[]
+
+                test_batch = {"images": images, "labels": labels}
+                pred = net.test_step_2D(sess, test_batch, keep_prob=1.0, ret_image=ret_image, ret_metrics=False)
+                logits3D[j:] = pred[0][:last]
+
+            # save 3d volume data as mhd
+            if ret_image:
+                save_prediction(logits3D, test_path, test_name, mode="3D")
+
             # Calculate 3D metrics
-            metrics_3D = metric_3D(logits3D, test_volumes["labels"][i], 
-                                    sampling=test_volume["meta"]["ElementSpacing"], connectivity=3)
-            for key, val in metrics_3D:
+            metrics_3D = metric_3D(logits3D, test_label, 
+                                   sampling=list(reversed(test_meta["ElementSpacing"])), # (z, y, x)
+                                   connectivity=3)
+            for key, val in metrics_3D.items():
                 metrics[key].append(val)
+            info = "mean Dice: {:.3f}\n" + \
+                   " " * 23 + ">>> batch VOE:  {:.3f}\n" + \
+                   " " * 23 + ">>> batch VD:   {:.3f}\n" + \
+                   " " * 23 + ">>> batch ASD:  {:.3f}\n" + \
+                   " " * 23 + ">>> batch RMSD: {:.3f}\n" + \
+                   " " * 23 + ">>> batch MSD:  {:.3f}"
+            info = info.format(
+                    metrics_3D["Dice"], metrics_3D["VOE"], metrics_3D["VD"],
+                    metrics_3D["ASD"], metrics_3D["RMSD"], metrics_3D["MSD"])
+            logger.info(info)
+                
         timer.toc()
 
-    info = "mean Dice: {:.3f}\n" + " " * 27 + \
-           "mean VOE:  {:.3f}\n" + " " * 27 + \
-           "mean VD:   {:.3f}\n" + " " * 27 + \
-           "mean ASD:  {:.3f}\n" + " " * 27 + \
-           "mean RMSD: {:.3f}\n" + " " * 27 + \
-           "mean MSD:  {:.3f}"
+    info = "mean Dice: {:.3f}\n" + \
+           " " * 23 + ">>> mean VOE:  {:.3f}\n" + \
+           " " * 23 + ">>> mean VD:   {:.3f}\n" + \
+           " " * 23 + ">>> mean ASD:  {:.3f}\n" + \
+           " " * 23 + ">>> mean RMSD: {:.3f}\n" + \
+           " " * 23 + ">>> mean MSD:  {:.3f}"
     info = info.format(
               np.mean(metrics["Dice"]), np.mean(metrics["VOE"]), np.mean(metrics["VD"]),
               np.mean(metrics["ASD"]), np.mean(metrics["RMSD"]), np.mean(metrics["MSD"]))
@@ -355,13 +458,18 @@ def test_model_3D(sess, net:FCN, test_set, test_path, logger=None):
 
 
 if __name__ == "__main__":
-    # check computation graph
-    net = FCN(24, 3, 12, 12, bc_mode=True, name="FCN-DenseNet")
-    solver = SolverWrapper(net, None, None, "a", "b", logger=True)  
-    
-    tfconfig = tf.ConfigProto(allow_soft_placement=True)
-    tfconfig.gpu_options.allow_growth = True
+    if False:
+        # check computation graph
+        net = FCN(24, 3, 12, 12, bc_mode=True, name="FCN-DenseNet")
+        solver = SolverWrapper(net, None, None, "a", "b")  
+        
+        tfconfig = tf.ConfigProto(allow_soft_placement=True)
+        tfconfig.gpu_options.allow_growth = True
 
-    with tf.Session(config=tfconfig) as sess:
-        solver._construct_graph(sess)
-        solver.writer.close()
+        with tf.Session(config=tfconfig) as sess:
+            solver._construct_graph(sess)
+            solver.writer.close()
+    if True:
+        # test save_prediction function
+        prediction = np.random.randn(2, 512, 512, 1)
+        save_prediction(prediction, "./", ["a.mhd", "b.mhd"])

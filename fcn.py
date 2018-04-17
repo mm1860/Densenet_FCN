@@ -19,7 +19,7 @@ class FCN(DenseNet):
         with tf.variable_scope(scope, "TransitionLayer"):
             if isinstance(out_channels, float):
                 out_channels = int(tensor_in.shape.as_list()[-1] * out_channels)
-            tensor_out = self._unit_layer(tensor_in, out_channels, 1, "TransitionUnit", training)
+            tensor_out = self._unit_layer(tensor_in, out_channels, 1, "TransitionUnit", training=training)
             tensor_out = slim.avg_pool2d(tensor_out, [2, 2])
         
         return tensor_out
@@ -44,6 +44,7 @@ class FCN(DenseNet):
             
             # Dense blocks
             tensor_out = self.create_dense_layer(first_conv, is_training)
+            # self._image_summaries.append(tensor_out[...,0][...,tf.newaxis])
 
             # Deconv block
             with tf.variable_scope("Deconv"):
@@ -51,18 +52,23 @@ class FCN(DenseNet):
                 for i in range(cfg.MODEL.BLOCKS):
                     tensor_out = slim.conv2d_transpose(tensor_out, channels, [2, 2], 2, scope="DeconvLayer{:d}".format(i + 1))
                     channels = channels // 2
-                    tensor_out = self._unit_layer(tensor_out, channels, 3, "UnitLayer{:d}".format(i + 1))
-                tensor_out = self._unit_layer(tensor_out, channels, 3, "UnitLayer{:d}".format(cfg.MODEL.BLOCKS + 1))
-                tensor_out = self._unit_layer(tensor_out, 2, 1, "UnitLayer{:d}".format(cfg.MODEL.BLOCKS + 2))
+                    tensor_out = self._unit_layer(tensor_out, channels, 3, "UnitLayer{:d}".format(i + 1), 
+                                                  training=is_training)
+                tensor_out = self._unit_layer(tensor_out, channels, 3, "UnitLayer{:d}".format(cfg.MODEL.BLOCKS + 1),
+                                              training=is_training)
+                tensor_out = self._unit_layer(tensor_out, 2, 1, "UnitLayer{:d}".format(cfg.MODEL.BLOCKS + 2),
+                                              training=is_training)
 
             self._act_summaries.append(tensor_out)
             self._layers["logits"] = tensor_out
             
-            softmax_tensor_out = slim.softmax(tensor_out)
+            tensor_out = slim.softmax(tensor_out, scope="Softmax")
+            #tensor_out = tf.sigmoid(tensor_out, name="Sigmoid")
             with tf.name_scope("Prediction"):
-                _, prediction = tf.split(softmax_tensor_out, 2, -1)
+                _, prediction = tf.split(tensor_out, 2, -1)
                 self._layers["Prediction"] = prediction
                 self._image_summaries.append(prediction)
+                self._act_summaries.append(prediction)
 
             with tf.name_scope("BinaryPred"):
                 zeros = array_ops.zeros_like(prediction, dtype=tf.int32)

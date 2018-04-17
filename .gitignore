@@ -105,3 +105,4 @@ ENV/
 tensorboard/
 output/
 logs/
+prediction/

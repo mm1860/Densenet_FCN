@@ -33,7 +33,7 @@ if __name__ == "__main__":
     if not osp.exists(logdir):
         os.makedirs(logdir)
     logfile = osp.join(logdir, "train_%s_%s_iter_%d" % (cfg.TAG, cfg.PREFIX, cfg.TRAIN.MAX_ITERS))
-    logger = create_logger(log_file=logfile, withtime=True)
+    logger = create_logger(log_file=logfile, withtime=True, propagate=False, name=cfg.LOGGER)
 
     logger.info("Configuration: ")
     for handler in logger.handlers:
@@ -57,4 +57,10 @@ if __name__ == "__main__":
     if not osp.exists(tb_dir):
         os.makedirs(tb_dir)
 
-    train_model(net, cfg.DATA.TRAINSET, cfg.DATA.VALSET, output_dir, tb_dir, cfg.PREFIX, cfg.TRAIN.MAX_ITERS)
+    train_model(net, 
+                cfg.DATA.TRAINSET, 
+                cfg.DATA.VALSET, 
+                output_dir, 
+                tb_dir, 
+                cfg.PREFIX, 
+                cfg.TRAIN.MAX_ITERS)

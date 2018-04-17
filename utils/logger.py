@@ -24,7 +24,7 @@ class MyFormatter(logging.Formatter):
 
 def create_logger(log_file=None, file_=True, console=True,
                   withtime=False, file_level=2, console_level=2,
-                  propagate=False):
+                  propagate=True, name=None):
     """ Create a logger to write info to console and file.
     
     Params
@@ -35,6 +35,11 @@ def create_logger(log_file=None, file_=True, console=True,
     `withtime`: if set, log_file will be add a time prefix  
     `file_level`: file info level  
     `console_level`: console info level  
+    `propagate`: if set, then message will be propagate to root logger  
+    `name`: logger name, if None, then root logger will be used  
+
+    Note: don't set propagate flag and give a name to logger is the way
+    to avoid logging dublication.
     
     Returns
     -------
@@ -50,8 +55,9 @@ def create_logger(log_file=None, file_=True, console=True,
         if os.path.exists(log_file):
             os.remove(log_file)
 
-    logger = logging.getLogger()
+    logger = logging.getLogger(name)
     logger.setLevel(levels[2])
+    logger.propagate = propagate
 
     formatter = MyFormatter("%(asctime)s: %(levelname).1s %(message)s")
 
@@ -70,7 +76,11 @@ def create_logger(log_file=None, file_=True, console=True,
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
-    logger.propagate = propagate
-
     return logger
 
+if __name__ == "__main__":
+    logger1 = create_logger(file_=False)
+    logger2 = create_logger(file_=False, name="A", propagate=False)
+    logger3 = create_logger(file_=False, console=False, name="A", propagate=False)
+
+    logger3.info("abc")

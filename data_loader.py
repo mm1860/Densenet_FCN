@@ -14,12 +14,19 @@ class MedImageLoader2D(DataLoader):
     `rootdir`: data root directory
     `datadir`: dataset directories, split with `+`. For example: "trainset1+trainset2"
     `batch_size`: batch size of image loader
+    `wwidth`: medical image window width
+    `wlevel`: medical image window level
     `img_channel`: image channel, default is 1 (i.e. gray image)
     `once`: just loop once or not
     `random`: if random flag is set, then the dataset is shuffled according to system
     time. Useful for the validation set.
     """
-    def __init__(self, rootdir, datadir, batch_size, img_channel=1, once=False, random=False):
+    def __init__(self, rootdir, datadir, batch_size, 
+                 wwidth=None, 
+                 wlevel=None, 
+                 img_channel=1, 
+                 once=False, 
+                 random=False):
         datadirs = datadir.split("+")
         self._db_path = []
         for d in datadirs:
@@ -28,6 +35,8 @@ class MedImageLoader2D(DataLoader):
         for path in self._db_path[1:]:
             self._images.extend(get_mhd_list_with_liver(osp.join(path, "mask")))
         self._batch_size = batch_size
+        self._wwidth = wwidth
+        self._wlevel = wlevel
         self._img_channel = img_channel
         self._height = 512
         self._width = 512
@@ -58,33 +67,45 @@ class MedImageLoader2D(DataLoader):
             image_file = mask_file.replace("mask", "liver").replace("_m_", "_o_")
             _, mask = mhd_reader(mask_file)
             _, image = mhd_reader(image_file)
-            mask = np.reshape(mask, (self.height, self.width, self.channel))
+            mask = np.reshape(mask.copy(), (self.height, self.width, self.channel))
             image = np.reshape(image, (self.height, self.width, self.channel))
-            masks[i,...] = (mask / np.max(mask)).astype(np.int32)
+            thresh = -1000 if mask[0, 0, 0] < -1000 else 0
+            mask[mask > thresh] = 1
+            mask[mask < thresh] = 0
+            masks[i,...] = mask.astype(np.int32)
             images[i,...] = image
 
             name = osp.basename(mask_file).replace("_m_", "_p_")
             image_names.append(name)
-        # nomalize to [-1, 1]
-        images = np.clip(images / 1024.0, -1.0, 1.0)
+        # set window width and level
+        widd2 = self._wwidth / 2
+        images = (np.clip(images, self._wlevel - widd2, self._wlevel + widd2) - 
+                  (self._wlevel - widd2)) / 2**16 * self._wwidth
 
         blob = {"images": images, "labels": masks, "names": image_names}
         return blob
 
 class MedImageLoader3D(DataLoader):
-    """ 2D medical image data loader.
+    """ 3D medical image data loader.
 
     Params
     ------
     `rootdir`: data root directory
     `datadir`: dataset directories, split with `+`. For example: "trainset1+trainset2"
     `batch_size`: batch size of image loader, only support 1
+    `wwidth`: medical image window width
+    `wlevel`: medical image window level
     `img_channel`: image channel, default is 1 (i.e. gray image)
     `once`: just loop once or not
     `random`: if random flag is set, then the dataset is shuffled according to system
     time. Useful for the validation set.
     """
-    def __init__(self, rootdir, datadir, batch_size=1, img_channel=1, once=False, random=False):
+    def __init__(self, rootdir, datadir, batch_size, 
+                 wwidth=None,
+                 wlevel=None,
+                 img_channel=1, 
+                 once=False, 
+                 random=False):
         datadirs = datadir.split('+')
         self._db_path = []
         for d in datadirs:
@@ -93,9 +114,11 @@ class MedImageLoader3D(DataLoader):
         for path in self._db_path[1:]:
             self._images.extend(get_mhd_list(osp.join(path, "mask")))
         self._batch_size = batch_size
+        self._wwidth = wwidth
+        self._wlevel = wlevel
+        self._volume_channels = img_channel
         self._height = 512
         self._width = 512
-        self._channels = 1
 
         super(MedImageLoader3D, self).__init__(once, random)
  
@@ -109,7 +132,7 @@ class MedImageLoader3D(DataLoader):
 
     @property
     def channels(self):
-        return self._channels
+        return self._volume_channels
 
     def next_minibatch(self, db_inds):
         assert len(db_inds) == self.batch_size
@@ -117,22 +140,29 @@ class MedImageLoader3D(DataLoader):
         images = []
         masks = []
         image_names = []
+        meta_datas = []
         for i, ind in enumerate(db_inds):
             mask_file = self.images[ind]
-            image_file = mask_file.replace("mask", "liver").replace("_m_", "")
+            image_file = mask_file.replace("mask", "liver").replace("_m", "")
             _, mask = mhd_reader(mask_file)
-            meta_data, liver = mhd_reader(image_file)
-            mask = np.reshape(mask, (-1, self.height, self.width))
-            mask = (mask / np.max(mask)).astype(np.int32)
+            meta_data, image = mhd_reader(image_file)
+            mask = np.reshape(mask.copy(), (-1, self.height, self.width, self.channels))   # depth is finally determined
+            thresh = -1000 if mask[0, 0, 0] < -1000 else 0
+            mask[mask > thresh] = 1
+            mask[mask < thresh] = 0
+            mask = mask.astype(np.int32)
             image = np.reshape(image, (-1, self.height, self.width, self.channels))
-            # normalize to [-1, 1]
-            image = np.clip(image / 1024.0, -1.0, 1.0)
+            # set window width and level
+            widd2 = self._wwidth / 2
+            image = (np.clip(image, self._wlevel - widd2, self._wlevel + widd2) - 
+                      (self._wlevel - widd2)) / 2**16 * self._wwidth
             images.append(image)
             masks.append(mask)
 
-            name = osp.basename(mask_file).replace("_m_", "_p_")
+            name = osp.basename(mask_file).replace("_m", "_p")
             image_names.append(name)
+            meta_datas.append(meta_data)
         
-        blob = {"images": images, "labels": masks, "names": image_names, "meta": meta_data}
+        blob = {"images": images, "labels": masks, "names": image_names, "meta": meta_datas}
 
         return blob

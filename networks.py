@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 from scipy.ndimage import morphology as mph
 from tensorflow.contrib import slim as slim
+from tensorflow.python.layers import utils
 
 from config import cfg
 
@@ -41,7 +42,9 @@ class DenseNet(object):
         self._losses = {}
         self._metrics_2D = {}
 
-    def _unit_layer(self, tensor_in:tf.Tensor, out_channels, kernel_size, name, training=True):
+    def _unit_layer(self, tensor_in:tf.Tensor, out_channels, kernel_size, name, keep_prob=1.0, training=True):
+        """ A simple bn-relu-conv implementation
+        """
         if isinstance(out_channels, float):
             out_channels = int(tensor_in.shape.as_list()[-1] * out_channels)
         with tf.variable_scope(name):
@@ -57,17 +60,20 @@ class DenseNet(object):
             
             tensor_out = slim.batch_norm(tensor_in, scale=True, is_training=training, activation_fn=activation)
             tensor_out = slim.conv2d(tensor_out, out_channels, [kernel_size]*2)
-            tensor_out = slim.dropout(tensor_out, self._keep_prob)
+            tensor_out = slim.dropout(tensor_out, keep_prob)
             
         return tensor_out
 
     def _internal_layer(self, tensor_in, growth_rate, training=True, bc_mode=False, scope=None):
         with tf.variable_scope(scope, "InternalLayer"):
             if bc_mode:
-                bottleneck_out = self._unit_layer(tensor_in, growth_rate * 4, 1, "Bottleneck", training)
-                tensor_out = self._unit_layer(bottleneck_out, growth_rate, 3, "CompositeFunction", training)
+                bottleneck_out = self._unit_layer(tensor_in, growth_rate * 4, 1, "Bottleneck", 
+                                                  keep_prob=cfg.TRAIN.KEEP_PROB, training=training)
+                tensor_out = self._unit_layer(bottleneck_out, growth_rate, 3, "CompositeFunction", 
+                                              keep_prob=cfg.TRAIN.KEEP_PROB, training=training)
             else:
-                tensor_out = self._unit_layer(tensor_in, growth_rate, 3, "CompositeFunction", training)
+                tensor_out = self._unit_layer(tensor_in, growth_rate, 3, "CompositeFunction", 
+                                              keep_prob=cfg.TRAIN.KEEP_PROB, training=training)
 
             tensor_out = tf.concat((tensor_in, tensor_out), axis=-1)
 
@@ -161,8 +167,8 @@ class DenseNet(object):
             labels = tf.cast(labels, tf.float32)
 
             nume = tf.reduce_sum(logits * labels, axis=sum_axis)
-            deno = tf.reduce_sum(tf.clip_by_value(logits + labels, 0., 1.), axis=sum_axis)
-            voe = 100 * (1. - nume / (deno + eps))
+            deno = tf.reduce_sum(tf.clip_by_value(logits + labels, 0.0, 1.0), axis=sum_axis)
+            voe = 100 * (1.0 - nume / (deno + eps))
 
         return tf.reduce_mean(voe)
 
@@ -177,7 +183,7 @@ class DenseNet(object):
 
         Returns
         -------
-        `dice`: average dice coefficient
+        `dice`: average vd
         """
         dim = len(logits.get_shape())
         sum_axis = list(range(1, dim))
@@ -191,9 +197,7 @@ class DenseNet(object):
 
         return tf.reduce_mean(vd)
 
-    def _add_2D_metries(self, name=None):
-        logits = self._layers["Binary_Pred"]
-        labels = self._mask
+    def _add_2D_metries(self, logits, labels, name=None):
         with tf.variable_scope(name, "Metries_2D"):
             dice = self._metric_dice(logits, labels)
             voe = self._metric_VOE(logits, labels)
@@ -203,21 +207,30 @@ class DenseNet(object):
         self._metrics_2D["VOE"] = voe
         self._metrics_2D["VD"] = vd
 
+    def _add_2D_metries_with_prob(self):
+        self._add_2D_metries(self._layers["Prediction"], self._mask)
+
+    def _add_2D_metries_with_bin(self, name=None):
+        self._add_2D_metries(self._layers["Binary_Pred"], self._mask)
 
     def _add_losses(self, name=None):
         with tf.variable_scope(name, "Loss"):
             labels = tf.squeeze(self._mask, axis=[-1])
             logits = self._layers["logits"]
-            cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels, logits)
+            cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels, logits) * cfg.MODEL.CROSS_ENTROPY
+            #cross_entropy = tf.losses.sigmoid_cross_entropy(tf.one_hot(labels, 2), logits) * cfg.MODEL.CROSS_ENTROPY
             self._losses["cross_entropy"] = cross_entropy
 
-            regularization_losses = tf.add_n(tf.losses.get_regularization_losses(), "Regu")
+            if cfg.MODEL.WEIGHT_DECAY != 0.0:
+                regularization_losses = tf.add_n(tf.losses.get_regularization_losses(), "Regu")
+            else:
+                regularization_losses = 0.0
             self._losses["total_loss"] = cross_entropy + regularization_losses
 
         return cross_entropy
 
     def create_architecture(self, mode, name=None):
-        shape = (cfg.TRAIN.BS, cfg.IMG.HEIGHT, cfg.IMG.WIDTH, cfg.IMG.CHANNEL)
+        shape = (cfg.TRAIN.BS, None, None, cfg.IMG.CHANNEL)
         self._image = tf.placeholder(tf.float32, shape, name="Image")
         self._mask = tf.placeholder(tf.int32, shape, name="Mask")
         self._keep_prob = tf.placeholder(tf.float32, (), name="KeepProb")
@@ -259,7 +272,14 @@ class DenseNet(object):
         self._add_losses()
         layers_out.update(self._losses)
 
-        self._add_2D_metries()
+        if "prob" in cfg.VAL.MAP.lower():
+            pred = True
+        elif "bin" in cfg.VAL.MAP.lower():
+            pred = False
+        else:
+            raise ValueError("Wrong validation map type ({:s})."
+                             " Please choice from [probability, binary].".format(cfg.VAL.MAP))
+        utils.smart_cond(pred, self._add_2D_metries_with_prob, self._add_2D_metries_with_bin, "Metrics2D")
 
         self._add_summaries()
         self._summary_op = tf.summary.merge_all()
@@ -298,7 +318,6 @@ class DenseNet(object):
         feed_dict = {self._image: test_batch["images"], self._mask: test_batch["labels"],
                     self._keep_prob: keep_prob}
         
-        pred = None
         fetches = []
         if ret_image:
             assert ret_image in ["Prediction", "Binary_Pred"], "ret_image should choice in [None, 'Prediction', 'Binary_Pred']"

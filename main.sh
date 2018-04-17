@@ -1,15 +1,15 @@
 #!/bin/bash
 
-MODE=$1
+TASK=$1
 GPU_ID=$2
 CFG_FILE=$3
+MODE=$4
 
-if [ ${MODE} == "train" ]; then
-    CUDA_VISIBLE_DEVICES=${GPU_ID} time python ./${MODE}.py \
+if [ ${TASK} == "train" ]; then
+    CUDA_VISIBLE_DEVICES=${GPU_ID} time python ./${TASK}.py \
         --cfg config/${CFG_FILE}.yml
-elif [ ${MODE} == "test" ]; then
-    CUDA_VISIBLE_DEVICES=${GPU_ID} time python ./${MODE}.py \
-        --mode "2D"
-        --output ""
-        --cfg config/${CFG_FILE}
+elif [ ${TASK} == "test" ]; then
+    CUDA_VISIBLE_DEVICES=${GPU_ID} time python ./${TASK}.py \
+        --mode ${MODE} \
+        --cfg config/${CFG_FILE}.yml
 fi

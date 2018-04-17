@@ -47,6 +47,9 @@ class DataLoader(object):
     def next_minibatch(self, db_inds):
         raise NotImplementedError
 
+    def __iter__(self):
+        return self
+
     def __next__(self):
         db_inds = self._next_minibatch_inds()
         batch = self.next_minibatch(db_inds)

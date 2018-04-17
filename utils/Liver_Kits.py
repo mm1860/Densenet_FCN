@@ -77,6 +77,21 @@ def mhd_reader(mhdpath, only_meta=False):
         
     return meta_info, raw_image 
 
+def mhd_writer(mhdpath, image:np.ndarray):
+    """ Implementation of `.mhd` file writer
+
+    Params
+    ------
+    `mhdpath`: file path to write at
+    `image`: image to write
+    """
+    image = np.squeeze(image)
+
+    meta_info = {}
+    meta_info["NDims"] = image.ndim
+    meta_info["DimSize"] = reversed(image.shape)
+    raise NotImplementedError
+
 def bbox_from_mask(mask, bk_value=None):
     """ Calculate bounding box from a mask image 
     """
@@ -135,14 +150,14 @@ def get_mhd_list_with_liver(SrcDir, verbose=False):
     return keep_mhd_list
 
 if __name__ == '__main__':
-    SrcDir = "C:/DataSet/LiverQL/Liver-Ref/"
-    SrcDir_o = "C:/DataSet/LiverQL/Liver_slices_train/liver/"
-    SrcDir_m = "C:/DataSet/LiverQL/Liver_slices_train/mask/"
+    SrcDir = "D:/DataSet/LiverQL/Liver-Ref/"
+    SrcDir_o = "D:/DataSet/LiverQL/Liver_slices_train/liver/"
+    SrcDir_m = "D:/DataSet/LiverQL/Liver_slices_train/mask/"
 
     if False:
         extract_slices(SrcDir, SrcDir_o, SrcDir_m)
     
     if True:
-        SrcDir_m = "C:/DataSet/LiverQL/3Dircadb1_slices_train/mask/"
+        SrcDir_m = "D:/DataSet/LiverQL/3Dircadb1_slices_train/mask/"
         print(len(get_mhd_list_with_liver(SrcDir_m, False)))
 
