@@ -77,7 +77,7 @@ if __name__ == '__main__':
         test_path = None
     
     if args.mode == "2D":
-        test_model_2D(sess, net, cfg.DATA.TESTSET_3D, test_path)
+        test_model_2D(sess, net, cfg.DATA.TESTSET, test_path)
     elif args.mode == "3D":
         test_model_3D(sess, net, cfg.DATA.TESTSET_3D, test_path)
     else:

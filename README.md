@@ -14,6 +14,19 @@ A tensorflow implementation of densenet with FCN for medical image segmentation
   > \>>> mean ASD:   2.989  
   > \>>> mean RMSD:  7.003  
   > \>>> mean MSD:  70.183  
+* leaky_relu
+  > 2D evalidation:  
+  > \>>> mean Dice:  0.905  
+  > \>>> mean VOE:  15.146  
+  > \>>> mean VD:   11.162  
+  > 3D evalidation:  
+  > \>>> mean Dice:  0.935  
+  > \>>> mean VOE:  12.131  
+  > \>>> mean VD:    5.211  
+  > \>>> mean ASD:   3.863  
+  > \>>> mean RMSD:  9.425  
+  > \>>> mean MSD:  97.093  
+
 * save 3D prediction is not finished.
 
 

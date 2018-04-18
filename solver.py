@@ -13,6 +13,7 @@ from data_loader import MedImageLoader2D, MedImageLoader3D
 from fcn import FCN
 from networks import metric_3D
 from utils.timer import Timer
+from utils.tb_logger import summary_scalar
 
 try:
     import cPickle as pickle
@@ -105,6 +106,16 @@ class SolverWrapper(object):
             pickle.dump(iter, fid, pickle.HIGHEST_PROTOCOL)
 
         return sfilename, nfilename
+
+    def _snapshot_best(self, sess):
+        if not osp.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+        
+        # store the weights
+        sfilename = "best_" + self.model_prefix + ".ckpt"
+        sfilename = osp.join(self.output_dir, sfilename)
+        self.saver.save(sess, sfilename)
+        self.logger.info("Write better snapshot to {:s}".format(sfilename))
 
     def _from_snapshot(self, sess, sfile, nfile):
         self.logger.info('Restoring model snapshots from {:s}'.format(sfile))
@@ -201,6 +212,7 @@ class SolverWrapper(object):
         lr_step.reverse()
         next_lr_step = lr_step.pop()
         
+        best_dice = 0.0
         while iter < max_iters + 1:
             # learning rate
             if iter == next_lr_step + 1:
@@ -257,8 +269,14 @@ class SolverWrapper(object):
                        ">>> mean Dice: {:.2f}\n" + " " * 23 + \
                        ">>> mean VOE:  {:.2f}\n" + " " * 23 + \
                        ">>> mean VD:   {:.2f}"
-                info = info.format(dice, voe, vd)
+                info = info.format(mean_dice, mean_voe, mean_vd)
                 self.logger.info(info)
+                # write to tensorboard
+                summary_scalar(self.writer, iter, 
+                               tags=["Metric/Dice_val", "Metric/VOE_val", "Metric/VD_val"],
+                               values=[mean_dice, mean_voe, mean_vd])
+                if mean_dice > best_dice:
+                    self._snapshot_best(sess)
 
             # snapshot step
             if iter % cfg.TRAIN.SNAPSHOT_ITERS == 0:
@@ -374,16 +392,13 @@ def test_model_3D(sess, net:FCN, test_set, test_path):
 
     dataloader = MedImageLoader3D(cfg.DATA.ROOT_DIR, test_set, cfg.TEST.BS_3D,
                                   wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, once=True)
-    if test_path:
-        if "prob" in cfg.VAL.MAP.lower():
-            ret_image = "Prediction"
-        elif "bin" in cfg.VAL.MAP.lower():
-            ret_image = "Binary_Pred"
-        else:
-            raise ValueError("Wrong validation map type ({:s})."
-                             " Please choice from [probability, binary].".format(cfg.VAL.MAP))
+    if "prob" in cfg.VAL.MAP.lower():
+        ret_image = "Prediction"
+    elif "bin" in cfg.VAL.MAP.lower():
+        ret_image = "Binary_Pred"
     else:
-        ret_image = False
+        raise ValueError("Wrong validation map type ({:s})."
+                            " Please choice from [probability, binary].".format(cfg.VAL.MAP))
 
     timer = Timer()
 
