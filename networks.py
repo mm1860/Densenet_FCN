@@ -272,9 +272,9 @@ class DenseNet(object):
         self._add_losses()
         layers_out.update(self._losses)
 
-        if "prob" in cfg.VAL.MAP.lower():
+        if "prob" in cfg.TRAIN.MAP.lower():
             pred = True
-        elif "bin" in cfg.VAL.MAP.lower():
+        elif "bin" in cfg.TRAIN.MAP.lower():
             pred = False
         else:
             raise ValueError("Wrong validation map type ({:s})."

@@ -99,6 +99,9 @@ __C.TRAIN.LR_DECAY = 0.1
 # learning rate step point
 __C.TRAIN.LR_STEP = [100000]
 
+# use probability map or binary map to compute metrics
+__C.TRAIN.MAP = "prob"
+
 # max iterations
 __C.TRAIN.MAX_ITERS = 150000
 
@@ -203,6 +206,17 @@ __C.MODEL.THRESHOLD = 0.5
 # * xavier
 __C.MODEL.WEIGHT_INITIALIZER = "trunc_norm"
 
+# //////////////////////////////////////////////////////////////////
+__C.OPTIMIZER = edict()
+
+# optimizer method
+__C.OPTIMIZER.METHOD = "adam"
+
+# adam parameters
+__C.OPTIMIZER.ADAM = edict()
+__C.OPTIMIZER.ADAM.ARGS = {"beta1": 0.9, "beta2": 0.99}
+
+# ///////////////////////////////////////////////////////////////////
 
 def merge_cfg(old_cfg, new_cfg):
     if type(old_cfg) is not edict:

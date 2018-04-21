@@ -13,6 +13,7 @@ from data_loader import MedImageLoader2D, MedImageLoader3D
 from fcn import FCN
 from networks import metric_3D
 from utils.timer import Timer
+from utils.tb_logger import summary_scalar
 
 try:
     import cPickle as pickle
@@ -45,7 +46,10 @@ class SolverWrapper(object):
             losses = layers["total_loss"]
             # set learning rate and momentum
             lr = tf.Variable(cfg.TRAIN.LR, trainable=False)
-            optimizer = tf.train.AdamOptimizer(lr, beta1=0.9, beta2=0.99)
+            if cfg.OPTIMIZER.METHOD == "adam":
+                optimizer = tf.train.AdamOptimizer(lr, **cfg.OPTIMIZER.ADAM.ARGS)
+            else:
+                raise ValueError("Not supported optimizer")
             #optimizer = tf.train.MomentumOptimizer(lr, cfg.TRAIN.MOMENTUM)
             
             # compute gradients
@@ -105,6 +109,16 @@ class SolverWrapper(object):
             pickle.dump(iter, fid, pickle.HIGHEST_PROTOCOL)
 
         return sfilename, nfilename
+
+    def _snapshot_best(self, sess):
+        if not osp.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+        
+        # store the weights
+        sfilename = self.model_prefix + "_best" + ".ckpt"
+        sfilename = osp.join(self.output_dir, sfilename)
+        self.saver.save(sess, sfilename)
+        self.logger.info("Write better snapshot to {:s}".format(sfilename))
 
     def _from_snapshot(self, sess, sfile, nfile):
         self.logger.info('Restoring model snapshots from {:s}'.format(sfile))
@@ -179,11 +193,14 @@ class SolverWrapper(object):
     def train_model(self, sess, max_iters):
         # build data layer
         self.dataloader = MedImageLoader2D(cfg.DATA.ROOT_DIR, self.train_set, cfg.TRAIN.BS, 
-                                           wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL)
+                                           wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL,
+                                           random=False, shuffle=True)
         self.dataloader_val = MedImageLoader2D(cfg.DATA.ROOT_DIR, self.val_set, cfg.TRAIN.BS, 
-                                               wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, random=True)
+                                               wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, 
+                                               random=False, shuffle=True)
         self.dataloader_val_total = MedImageLoader2D(cfg.DATA.ROOT_DIR, self.val_set, cfg.TRAIN.BS,
-                                                     wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, random=True)
+                                                     wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, 
+                                                     random=False, shuffle=False)
 
         # construct graph
         lr, train_op = self._construct_graph(sess)
@@ -201,6 +218,8 @@ class SolverWrapper(object):
         lr_step.reverse()
         next_lr_step = lr_step.pop()
         
+        best_dice = 0.0
+        best_voe = 100.0
         while iter < max_iters + 1:
             # learning rate
             if iter == next_lr_step + 1:
@@ -257,8 +276,18 @@ class SolverWrapper(object):
                        ">>> mean Dice: {:.2f}\n" + " " * 23 + \
                        ">>> mean VOE:  {:.2f}\n" + " " * 23 + \
                        ">>> mean VD:   {:.2f}"
-                info = info.format(dice, voe, vd)
+                info = info.format(mean_dice, mean_voe, mean_vd)
                 self.logger.info(info)
+                # write to tensorboard
+                summary_scalar(self.writer, iter, 
+                               tags=["Metric/Dice_val", "Metric/VOE_val", "Metric/VD_val"],
+                               values=[mean_dice, mean_voe, mean_vd])
+                if mean_dice > best_dice:
+                    best_dice = mean_dice
+                    self._snapshot_best(sess)
+                elif mean_dice == best_dice and mean_voe < best_voe:
+                    best_voe = mean_voe
+                    self._snapshot_best(sess)
 
             # snapshot step
             if iter % cfg.TRAIN.SNAPSHOT_ITERS == 0:
@@ -266,6 +295,8 @@ class SolverWrapper(object):
                 ss_path, np_path = self._snapshot(sess, iter)
                 np_paths.append(np_path)
                 ss_paths.append(ss_path)
+
+                # Remove old snapshots if they are too many
                 if len(np_paths) > cfg.TRAIN.SNAPSHOT_KEPT:
                     self._del_snapshot(np_paths, ss_paths)
 
@@ -323,7 +354,8 @@ def test_model_2D(sess, net:FCN, test_set, test_path):
     logger = global_logger(cfg.LOGGER)
     
     dataloader = MedImageLoader2D(cfg.DATA.ROOT_DIR, test_set, cfg.TEST.BS_2D, 
-                                  wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, once=True)
+                                  wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, 
+                                  random=False, shuffle=False, once=True)
     if test_path:
         if "prob" in cfg.VAL.MAP.lower():
             ret_image = "Prediction"
@@ -373,17 +405,15 @@ def test_model_3D(sess, net:FCN, test_set, test_path):
     logger = global_logger(cfg.LOGGER)
 
     dataloader = MedImageLoader3D(cfg.DATA.ROOT_DIR, test_set, cfg.TEST.BS_3D,
-                                  wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, once=True)
-    if test_path:
-        if "prob" in cfg.VAL.MAP.lower():
-            ret_image = "Prediction"
-        elif "bin" in cfg.VAL.MAP.lower():
-            ret_image = "Binary_Pred"
-        else:
-            raise ValueError("Wrong validation map type ({:s})."
-                             " Please choice from [probability, binary].".format(cfg.VAL.MAP))
+                                  wwidth=cfg.IMG.W_WIDTH, wlevel=cfg.IMG.W_LEVEL, 
+                                  random=False, shuffle=False, once=True)
+    if "prob" in cfg.VAL.MAP.lower():
+        ret_image = "Prediction"
+    elif "bin" in cfg.VAL.MAP.lower():
+        ret_image = "Binary_Pred"
     else:
-        ret_image = False
+        raise ValueError("Wrong validation map type ({:s})."
+                            " Please choice from [probability, binary].".format(cfg.VAL.MAP))
 
     timer = Timer()
 

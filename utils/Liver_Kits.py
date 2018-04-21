@@ -17,20 +17,37 @@ METType = {
     'MET_FLOAT': np.float64
 }
 
-def extract_slices(SrcDir, DstDir_o, DstDir_m):
+def extract_data(SrcDir, mode, DstDir_o, DstDir_m, worker, origin, mask, name=None):
+    """ Convert vol data into mhd data
+
+    Params
+    ------
+    `SrcDir`: source directory
+    `mode`: 0 or 1, extract 3D volume or 2D slices
+    `DstDir_o`: destination directory to store origin image
+    `DstDir_m`: destination directory to store mask image
+    `worker`: converter path
+    """
     SrcDirs = os.listdir(SrcDir)
 
-    for src in SrcDirs:
-        src_liver = SrcDir + src + "/Liver.vol"
-        src_liver_mask = SrcDir + src + "/Liver.mask.vol"
+    for i, src in enumerate(SrcDirs):
+        if name:
+            dst = "{:s}{:03d}".format(name, i)
+        else:
+            dst = src
+        src_liver = osp.join(SrcDir, src, origin)
+        src_liver_mask = osp.join(SrcDir, src, mask)
 
-        dst_liver = DstDir_o + src + "_o"
-        dst_liver_mask = DstDir_m + src + "_m"
-
-        worker_path = osp.join(osp.dirname(__file__), "$VolConverter.exe")
-
-        os.system(worker_path + " 1 " + src_liver + " " + dst_liver)
-        os.system(worker_path + " 1 " + src_liver_mask + " " +  dst_liver_mask)
+        dst_liver = osp.join(DstDir_o, (dst + "_o") if mode == 1 else dst)
+        dst_liver_mask = osp.join(DstDir_m, dst + "_m")
+        if mode == 0:
+            os.system(worker + " 0 1 " + src_liver + " " + dst_liver)
+            os.system(worker + " 0 0 " + src_liver_mask + " " +  dst_liver_mask)
+        elif mode == 1:
+            os.system(worker + " 1 1 " + src_liver + " " + dst_liver)
+            os.system(worker + " 1 0 " + src_liver_mask + " " +  dst_liver_mask)
+        else:
+            raise ValueError("Wrong mode.")
 
 def mhd_reader(mhdpath, only_meta=False):
     """ Implementation of `.mhd` file reader
@@ -150,14 +167,30 @@ def get_mhd_list_with_liver(SrcDir, verbose=False):
     return keep_mhd_list
 
 if __name__ == '__main__':
-    SrcDir = "D:/DataSet/LiverQL/Liver-Ref/"
-    SrcDir_o = "D:/DataSet/LiverQL/Liver_slices_train/liver/"
-    SrcDir_m = "D:/DataSet/LiverQL/Liver_slices_train/mask/"
-
     if False:
+        SrcDir = "D:/DataSet/LiverQL/Liver-Ref/"
+        SrcDir_o = "D:/DataSet/LiverQL/Liver_slices_train/liver/"
+        SrcDir_m = "D:/DataSet/LiverQL/Liver_slices_train/mask/"
         extract_slices(SrcDir, SrcDir_o, SrcDir_m)
     
-    if True:
+    if False:
         SrcDir_m = "D:/DataSet/LiverQL/3Dircadb1_slices_train/mask/"
         print(len(get_mhd_list_with_liver(SrcDir_m, False)))
 
+    if False:
+        SrcDir = "D:/DataSet/LiverQL/Target-New-Training"
+        worker = "D:/DataSet/LiverQL/VolConverter.exe"
+        DstDir_o = "D:/DataSet/LiverQL/Liver_2018_train_3D/liver"
+        DstDir_m = "D:/DataSet/LiverQL/Liver_2018_train_3D/mask"
+        origin = "Study_Phase2.vol"
+        mask = "Study_Phase2_Label.vol"
+        extract_data(SrcDir, 0, DstDir_o, DstDir_m, worker, origin, mask, name="R")
+
+    if True:
+        SrcDir = "D:/DataSet/LiverQL/Target-New-Training"
+        worker = "D:/DataSet/LiverQL/VolConverter.exe"
+        DstDir_o = "D:/DataSet/LiverQL/Liver_2018_train/liver"
+        DstDir_m = "D:/DataSet/LiverQL/Liver_2018_train/mask"
+        origin = "Study_Phase2.vol"
+        mask = "Study_Phase2_Label.vol"
+        extract_data(SrcDir, 1, DstDir_o, DstDir_m, worker, origin, mask, name="R")

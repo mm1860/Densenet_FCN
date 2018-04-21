@@ -16,6 +16,8 @@ def parse_args():
     parser.add_argument("--mode", dest="mode", default="2D", type=str, 
                         choices=["2D", "3D"],
                         help="test mode (2D/3D image, default is 2D)")
+    parser.add_argument("--best", dest="best", default=False, type=bool,
+                        help="use the best model or not, if not, cfg.TEST.ITER must be provided")
     parser.add_argument("--cfg", dest="cfg_file", default=None, type=str,
                         help="extra configuration (it will cover default config in config.py)")
 
@@ -43,7 +45,10 @@ if __name__ == '__main__':
         pprint(cfg, handler.stream)
 
     model_path = osp.join(cfg.SRC_DIR, cfg.OUTPUT_DIR, cfg.TAG)
-    model_file = osp.join(model_path, "{:s}_iter_{:d}.ckpt".format(cfg.PREFIX, cfg.TEST.ITER))
+    if args.best:
+        model_file = osp.join(model_path, "{:s}_best.ckpt".format(cfg.PREFIX))
+    else:
+        model_file = osp.join(model_path, "{:s}_iter_{:d}.ckpt".format(cfg.PREFIX, cfg.TEST.ITER))
 
     tfconfig = tf.ConfigProto(allow_soft_placement=True)
     tfconfig.gpu_options.allow_growth = True
@@ -77,7 +82,7 @@ if __name__ == '__main__':
         test_path = None
     
     if args.mode == "2D":
-        test_model_2D(sess, net, cfg.DATA.TESTSET_3D, test_path)
+        test_model_2D(sess, net, cfg.DATA.TESTSET, test_path)
     elif args.mode == "3D":
         test_model_3D(sess, net, cfg.DATA.TESTSET_3D, test_path)
     else:
