@@ -2,9 +2,10 @@ import time
 import numpy as np
 
 class DataLoader(object):
-    def __init__(self, once=False, random=False):
+    def __init__(self, once=False, random=False, shuffle=False):
         self._once = once
         self._random = random
+        self._shuffle = shuffle
         self._shuffle_database_inds()
 
     @property
@@ -26,7 +27,10 @@ class DataLoader(object):
             millis = int(round(time.time() * 1000) % 4294967295)
             np.random.seed(millis)
 
-        self._perm = np.random.permutation(np.arange(self.num_images))
+        if self._shuffle:
+            self._perm = np.random.permutation(np.arange(self.num_images))
+        else:
+            self._perm = np.arange(self.num_images)
 
         if self._random:
             np.random.set_state(st0)

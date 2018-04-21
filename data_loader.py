@@ -18,15 +18,20 @@ class MedImageLoader2D(DataLoader):
     `wlevel`: medical image window level
     `img_channel`: image channel, default is 1 (i.e. gray image)
     `once`: just loop once or not
-    `random`: if random flag is set, then the dataset is shuffled according to system
-    time. Useful for the validation set.
+    `random`: if random flag is set, then the dataset is shuffled(if set) according to 
+    system time, else only with numpy random seed.  
+    `shuffle`: a boolean, shuffle dataset or not. If shuffle flag is not set, then `random`
+    will be disabled.
+
+    Note: For experiemnts repeatable, please set fixed cfg.RNG_SEED and random=False.
     """
     def __init__(self, rootdir, datadir, batch_size, 
                  wwidth=None, 
                  wlevel=None, 
                  img_channel=1, 
                  once=False, 
-                 random=False):
+                 random=False,
+                 shuffle=False):
         datadirs = datadir.split("+")
         self._db_path = []
         for d in datadirs:
@@ -41,7 +46,7 @@ class MedImageLoader2D(DataLoader):
         self._height = 512
         self._width = 512
 
-        super(MedImageLoader2D, self).__init__(once, random)
+        super(MedImageLoader2D, self).__init__(once, random, shuffle)
 
     @property
     def height(self):
@@ -97,15 +102,20 @@ class MedImageLoader3D(DataLoader):
     `wlevel`: medical image window level
     `img_channel`: image channel, default is 1 (i.e. gray image)
     `once`: just loop once or not
-    `random`: if random flag is set, then the dataset is shuffled according to system
-    time. Useful for the validation set.
+    `random`: if random flag is set, then the dataset is shuffled(if set) according to 
+    system time, else only with numpy random seed.  
+    `shuffle`: a boolean, shuffle dataset or not. If shuffle flag is not set, then `random`
+    will be disabled.
+
+    Note: For experiemnts repeatable, please set fixed cfg.RNG_SEED and random=False.
     """
     def __init__(self, rootdir, datadir, batch_size, 
                  wwidth=None,
                  wlevel=None,
                  img_channel=1, 
                  once=False, 
-                 random=False):
+                 random=False,
+                 shuffle=False):
         datadirs = datadir.split('+')
         self._db_path = []
         for d in datadirs:
@@ -120,7 +130,7 @@ class MedImageLoader3D(DataLoader):
         self._height = 512
         self._width = 512
 
-        super(MedImageLoader3D, self).__init__(once, random)
+        super(MedImageLoader3D, self).__init__(once, random, shuffle)
  
     @property
     def height(self):
