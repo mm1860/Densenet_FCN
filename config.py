@@ -207,6 +207,15 @@ __C.MODEL.THRESHOLD = 0.5
 __C.MODEL.WEIGHT_INITIALIZER = "trunc_norm"
 
 # //////////////////////////////////////////////////////////////////
+__C.UDN = edict()
+
+# compression
+__C.UDN.THETA = 1.0
+
+# use dropout or not
+__C.UDN.USE_DROPOUT = False
+
+# //////////////////////////////////////////////////////////////////
 __C.OPTIMIZER = edict()
 
 # optimizer method

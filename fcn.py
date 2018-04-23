@@ -1,21 +1,9 @@
 import tensorflow as tf
 from tensorflow.contrib import slim as slim
 from tensorflow.python.ops import array_ops
-from networks import Networks
+from networks import Networks, prelu
 
 from config import cfg
-
-def prelu(tensor_in:tf.Tensor, name=None):
-    with tf.variable_scope(name, "PReLU", [tensor_in]):
-        alpha = tf.get_variable("alpha", shape=tensor_in.get_shape()[-1],
-                                initializer=tf.constant_initializer(0.),
-                                dtype=tensor_in.dtype)
-        pos = tf.nn.relu(tensor_in)
-        neg = alpha * (tensor_in - tf.abs(tensor_in)) * 0.5
-
-        tensor_out = pos + neg
-
-    return tensor_out
 
 class FC_DenseNet(Networks):
     """ FC-DenseNet implementation
