@@ -19,6 +19,15 @@ def prelu(tensor_in:tf.Tensor, name=None):
 
 class FC_DenseNet(Networks):
     """ FC-DenseNet implementation
+
+    Params
+    ------
+    `init_channels`:  
+    `num_blocks`:  
+    `num_layers_per_block`:  
+    `growth_rate`:  
+    `bc_mode`:  
+    `name`:  
     """
     def __init__(self, init_channels, num_blocks, num_layers_per_block,
                 growth_rate, bc_mode, name=None):
