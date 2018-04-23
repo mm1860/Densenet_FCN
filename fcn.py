@@ -47,6 +47,11 @@ class FC_DenseNet(Networks):
         self._bc_mode = bc_mode
         super(FC_DenseNet, self).__init__()
  
+    def _net_arg_scope(self):
+        with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
+                            activation_fn=None) as scope:
+            return scope
+
     @staticmethod
     def _unit_layer(tensor_in:tf.Tensor, out_channels, kernel_size, name, keep_prob=1.0, training=True):
         """ A simple bn-relu-conv implementation

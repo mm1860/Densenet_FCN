@@ -17,6 +17,9 @@ class Networks(object):
     def _build_network(self, is_training=True, reuse=None, name=None):
         raise NotImplementedError
 
+    def _net_arg_scope(self):
+        raise NotImplementedError
+
     def _add_summaries(self):
         self.val_summaries = []
         with tf.device("/cpu:0"):
@@ -185,9 +188,9 @@ class Networks(object):
                             weights_regularizer=weights_regularizer,
                             weights_initializer=weights_initializer,
                             biases_regularizer=biases_regularizer,
-                            biases_initializer=biases_initializer,
-                            activation_fn=None):
-            prediction = self._build_network(training, name=name)
+                            biases_initializer=biases_initializer):
+            with slim.arg_scope(self._net_arg_scope()):
+                prediction = self._build_network(training, name=name)
         layers_out["prediction"] = prediction
 
         self._add_losses()
