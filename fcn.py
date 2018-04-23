@@ -1,20 +1,92 @@
 import tensorflow as tf
 from tensorflow.contrib import slim as slim
 from tensorflow.python.ops import array_ops
-from networks import DenseNet, prelu
+from networks import Networks
 
 from config import cfg
 
-class FCN(DenseNet):
+def prelu(tensor_in:tf.Tensor, name=None):
+    with tf.variable_scope(name, "PReLU", [tensor_in]):
+        alpha = tf.get_variable("alpha", shape=tensor_in.get_shape()[-1],
+                                initializer=tf.constant_initializer(0.),
+                                dtype=tensor_in.dtype)
+        pos = tf.nn.relu(tensor_in)
+        neg = alpha * (tensor_in - tf.abs(tensor_in)) * 0.5
+
+        tensor_out = pos + neg
+
+    return tensor_out
+
+class FC_DenseNet(Networks):
     """ FC-DenseNet implementation
     """
     def __init__(self, init_channels, num_blocks, num_layers_per_block,
                 growth_rate, bc_mode, name=None):
         self._name = name if name is not None else "FC_DenseNet"
-        super(FCN, self).__init__(init_channels, num_blocks, num_layers_per_block,
-                                growth_rate, bc_mode)
-
+        self._init_channels = init_channels
+        self._num_blocks = num_blocks
+        if isinstance(num_layers_per_block, int):
+            self._num_layers_per_block = [num_layers_per_block] * self._num_blocks
+        elif isinstance(num_layers_per_block, list):
+            self._num_layers_per_block = num_layers_per_block
+            if len(num_layers_per_block) < num_blocks:
+                extra_len = (num_blocks - 1) // len(num_layers_per_block)
+                self._num_layers_per_block.extend(num_layers_per_block * extra_len)
+        else:
+            raise TypeError("Error type for `num_layers_per_block`")
+        self._growth_rate = growth_rate
+        self._bc_mode = bc_mode
+        super(FC_DenseNet, self).__init__()
+ 
+    @staticmethod
+    def _unit_layer(tensor_in:tf.Tensor, out_channels, kernel_size, name, keep_prob=1.0, training=True):
+        """ A simple bn-relu-conv implementation
+        """
+        if isinstance(out_channels, float):
+            out_channels = int(tensor_in.shape.as_list()[-1] * out_channels)
+        with tf.variable_scope(name):
+            # batch_norm need UPDATE_OPS
+            if cfg.MODEL.ACTIVATION == "relu":
+                activation = tf.nn.relu
+            elif cfg.MODEL.ACTIVATION == "prelu":
+                activation = prelu
+            elif cfg.MODEL.ACTIVATION == "leaky_relu":
+                activation = tf.nn.leaky_relu
+            else:
+                raise ValueError("Unsupported activation function: %s" % cfg.MODEL.ACTIVATION)
+            
+            tensor_out = slim.batch_norm(tensor_in, scale=True, is_training=training, activation_fn=activation)
+            tensor_out = slim.conv2d(tensor_out, out_channels, [kernel_size]*2)
+            tensor_out = slim.dropout(tensor_out, keep_prob)
+            
+        return tensor_out
     
+    def _internal_layer(self, tensor_in, growth_rate, training=True, bc_mode=False, scope=None):
+        with tf.variable_scope(scope, "InternalLayer"):
+            if bc_mode:
+                bottleneck_out = self._unit_layer(tensor_in, growth_rate * 4, 1, "Bottleneck", 
+                                                  keep_prob=cfg.TRAIN.KEEP_PROB, training=training)
+                tensor_out = self._unit_layer(bottleneck_out, growth_rate, 3, "CompositeFunction", 
+                                              keep_prob=cfg.TRAIN.KEEP_PROB, training=training)
+            else:
+                tensor_out = self._unit_layer(tensor_in, growth_rate, 3, "CompositeFunction", 
+                                              keep_prob=cfg.TRAIN.KEEP_PROB, training=training)
+
+            tensor_out = tf.concat((tensor_in, tensor_out), axis=-1)
+
+        return tensor_out
+
+    def create_dense_layer(self, tensor_in, training=True):
+        tensor_out = tensor_in
+        for i in range(self._num_blocks):
+            with tf.variable_scope("DenseBlock%d" % (i + 1)):
+                tensor_out = slim.repeat(tensor_out, self._num_layers_per_block[i], self._internal_layer,
+                                        self._growth_rate, training, self._bc_mode)
+                self._act_summaries.append(tensor_out)
+                if i < self._num_blocks - 1:
+                    tensor_out = self._transition_layer(tensor_out, cfg.MODEL.THETA, training=training)
+        return tensor_out
+
     def _transition_layer(self, tensor_in:tf.Tensor, out_channels, training=True, scope=None):
         with tf.variable_scope(scope, "TransitionLayer"):
             if isinstance(out_channels, float):
@@ -44,7 +116,6 @@ class FCN(DenseNet):
             
             # Dense blocks
             tensor_out = self.create_dense_layer(first_conv, is_training)
-            # self._image_summaries.append(tensor_out[...,0][...,tf.newaxis])
 
             # Deconv block
             with tf.variable_scope("Deconv"):

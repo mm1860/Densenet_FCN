@@ -7,7 +7,7 @@ from pprint import pprint
 import tensorflow as tf
 
 from config import cfg, update_cfg
-from fcn import FCN
+from fcn import FC_DenseNet
 from solver import test_model_2D, test_model_3D
 from utils.logger import create_logger
 
@@ -59,11 +59,12 @@ if __name__ == '__main__':
     sess = tf.Session(config=tfconfig, graph=main_graph)
 
     with main_graph.as_default():
-        net = FCN(cfg.MODEL.INIT_CHANNELS, 
-                  cfg.MODEL.BLOCKS, 
-                  cfg.MODEL.NUM_LAYERS_PER_BLOCK,
-                  cfg.MODEL.GROWTH_RATE, 
-                  bc_mode=True, name="FCN-DenseNet")
+        net = FC_DenseNet(cfg.MODEL.INIT_CHANNELS, 
+                          cfg.MODEL.BLOCKS, 
+                          cfg.MODEL.NUM_LAYERS_PER_BLOCK,
+                          cfg.MODEL.GROWTH_RATE, 
+                          bc_mode=True, 
+                          name="FCN-DenseNet")
         net.create_architecture("TEST")
 
         if osp.exists(model_file + ".meta"):

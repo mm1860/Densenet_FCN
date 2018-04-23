@@ -10,7 +10,7 @@ import tensorflow as tf
 
 from config import cfg, global_logger
 from data_loader import MedImageLoader2D, MedImageLoader3D
-from fcn import FCN
+from fcn import FC_DenseNet
 from networks import metric_3D
 from utils.timer import Timer
 from utils.tb_logger import summary_scalar
@@ -25,7 +25,7 @@ except ImportError:
 class SolverWrapper(object):
     """ A wrapper class for solver
     """
-    def __init__(self, network:FCN, train_set, val_set, output_dir, tbdir, 
+    def __init__(self, network:FC_DenseNet, train_set, val_set, output_dir, tbdir, 
                 model_name="default"):
         self.net = network
         self.train_set = train_set
@@ -349,7 +349,7 @@ def save_prediction(prediction, test_path, test_names, mode):
             pass
 
 
-def test_model_2D(sess, net:FCN, test_set, test_path):
+def test_model_2D(sess, net:FC_DenseNet, test_set, test_path):
     np.random.seed(cfg.RNG_SEED)
     logger = global_logger(cfg.LOGGER)
     
@@ -400,7 +400,7 @@ def test_model_2D(sess, net:FCN, test_set, test_path):
     info = info.format(mean_dice, mean_voe, mean_vd)
     logger.info(info)
 
-def test_model_3D(sess, net:FCN, test_set, test_path):
+def test_model_3D(sess, net:FC_DenseNet, test_set, test_path):
     np.random.seed(cfg.RNG_SEED)
     logger = global_logger(cfg.LOGGER)
 
@@ -490,7 +490,7 @@ def test_model_3D(sess, net:FCN, test_set, test_path):
 if __name__ == "__main__":
     if False:
         # check computation graph
-        net = FCN(24, 3, 12, 12, bc_mode=True, name="FCN-DenseNet")
+        net = FC_DenseNet(24, 3, 12, 12, bc_mode=True, name="FCN-DenseNet")
         solver = SolverWrapper(net, None, None, "a", "b")  
         
         tfconfig = tf.ConfigProto(allow_soft_placement=True)

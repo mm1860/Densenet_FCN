@@ -5,7 +5,7 @@ import sys
 from pprint import pprint
 
 from config import cfg, update_cfg
-from fcn import FCN
+from fcn import FC_DenseNet
 from solver import train_model
 from utils.logger import create_logger
 
@@ -40,12 +40,12 @@ if __name__ == "__main__":
         pprint(cfg, handler.stream)
 
     # define network
-    net = FCN(cfg.MODEL.INIT_CHANNELS,
-              cfg.MODEL.BLOCKS,
-              cfg.MODEL.NUM_LAYERS_PER_BLOCK,
-              cfg.MODEL.GROWTH_RATE,
-              bc_mode=True,
-              name="FCN-DenseNet")
+    net = FC_DenseNet(cfg.MODEL.INIT_CHANNELS,
+                      cfg.MODEL.BLOCKS,
+                      cfg.MODEL.NUM_LAYERS_PER_BLOCK,
+                      cfg.MODEL.GROWTH_RATE,
+                      bc_mode=True,
+                      name="FCN-DenseNet")
     
     # define output directory
     output_dir = osp.join(cfg.SRC_DIR, cfg.OUTPUT_DIR, cfg.TAG)
