@@ -162,6 +162,7 @@ __C.TEST.BS_3D = 1
 __C.TEST.ITER = __C.TRAIN.MAX_ITERS
 
 # /////////////////////////////////////////////////////////////////
+# model settings for FC-Densenet
 __C.MODEL = edict()
 
 # activation function:

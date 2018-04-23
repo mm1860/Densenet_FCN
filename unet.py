@@ -10,6 +10,13 @@ class UNet(networks.Networks):
 
     Params
     ------
+    `init_channels`: a integer, number of output channels in first conv layer  
+    `num_down_sample`: a integer, down(up) sample times  
+    `num_conv_per_layer`: integer or list, number of conv operations in each unet layer.
+    If a integer is passed in, then all the layers will use the same number, while a list
+    or tuple is passed in, then it must specify the number of conv operations in each
+    layer.  
+    `name`: a string, name of the network  
     """
     def __init__(self, 
                  init_channels=64,
