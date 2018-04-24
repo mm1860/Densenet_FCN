@@ -53,8 +53,11 @@ class SolverWrapper(object):
             #optimizer = tf.train.MomentumOptimizer(lr, cfg.TRAIN.MOMENTUM)
             
             # compute gradients
-            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-            with tf.control_dependencies(update_ops):
+            if cfg.TRAIN.UPDATE_OPS:
+                update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+                with tf.control_dependencies(update_ops):
+                    train_op = optimizer.minimize(losses)
+            else:
                 train_op = optimizer.minimize(losses)
 
             # handle saver ourselves

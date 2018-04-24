@@ -17,7 +17,7 @@ class Networks(object):
     def _build_network(self, is_training=True, reuse=None, name=None):
         raise NotImplementedError
 
-    def _net_arg_scope(self):
+    def _net_arg_scope(self, training=True):
         raise NotImplementedError
 
     def _add_summaries(self):
@@ -189,7 +189,7 @@ class Networks(object):
                             weights_initializer=weights_initializer,
                             biases_regularizer=biases_regularizer,
                             biases_initializer=biases_initializer):
-            with slim.arg_scope(self._net_arg_scope()):
+            with slim.arg_scope(self._net_arg_scope(training=training)):
                 prediction = self._build_network(training, name=name)
         layers_out["prediction"] = prediction
 

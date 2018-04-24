@@ -31,7 +31,9 @@ class UNet(networks.Networks):
         if isinstance(num_conv_per_layer, int):
             self._num_conv_per_layer = [num_conv_per_layer] * self._num_layers
         elif isinstance(num_conv_per_layer, (list, tuple)):
-            if len(num_conv_per_layer) == self._num_layers:
+            if len(num_conv_per_layer) == 1:
+                self._num_conv_per_layer = num_conv_per_layer * self._num_layers
+            elif len(num_conv_per_layer) == self._num_layers:
                 self._num_conv_per_layer = num_conv_per_layer
             else:
                 raise ValueError("length of num_conv_per_layer({:d}) isn't equal to total layers: {:d}"
@@ -41,8 +43,14 @@ class UNet(networks.Networks):
                             .format(type(num_conv_per_layer)))
         super(UNet, self).__init__()
 
-    def _net_arg_scope(self):
-        return slim.current_arg_scope()
+    def _net_arg_scope(self, training=True):
+        normalizer_params = {"decay": 0.9, 
+                             "scale": True, 
+                             "is_training": training}
+        with slim.arg_scope([slim.conv2d], 
+                            normalizer_fn=slim.batch_norm, 
+                            normalizer_params=normalizer_params) as scope:
+            return scope
 
     def _build_network(self, is_training=True, reuse=None, name=None):
         with tf.variable_scope(name, self._name, reuse=reuse):
@@ -66,8 +74,7 @@ class UNet(networks.Networks):
             for i in reversed(range(self._num_down_sample)):
                 out_channels /= 2
                 with tf.variable_scope("Decode{:d}".format(i + 1)):
-                    tensor_out = slim.conv2d_transpose(tensor_out, tensor_out.get_shape()[-1] // 2, [2, 2], 2,
-                                                       scope="Deconv")
+                    tensor_out = slim.conv2d_transpose(tensor_out, tensor_out.get_shape()[-1] // 2, [2, 2], 2, scope="Deconv")
                     tensor_out = tf.concat((self._layers["Encode{:d}".format(i + 1)], tensor_out), axis=-1)
                     tensor_out = slim.repeat(tensor_out, self._num_conv_per_layer[-(i + 1)], slim.conv2d, out_channels, [3, 3])
                     self._layers["Decode{:d}".format(i + 1)] = tensor_out

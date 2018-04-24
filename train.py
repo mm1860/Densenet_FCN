@@ -6,6 +6,7 @@ from pprint import pprint
 
 from config import cfg, update_cfg
 from fcn import FC_DenseNet
+from unet import UNet
 from solver import train_model
 from utils.logger import create_logger
 
@@ -40,13 +41,21 @@ if __name__ == "__main__":
         pprint(cfg, handler.stream)
 
     # define network
-    net = FC_DenseNet(cfg.MODEL.INIT_CHANNELS,
-                      cfg.MODEL.BLOCKS,
-                      cfg.MODEL.NUM_LAYERS_PER_BLOCK,
-                      cfg.MODEL.GROWTH_RATE,
-                      bc_mode=True,
-                      name="FCN-DenseNet")
-    
+    if cfg.BACKBONE == "FC-Densenet":
+        net = FC_DenseNet(cfg.MODEL.INIT_CHANNELS,
+                          cfg.MODEL.BLOCKS,
+                          cfg.MODEL.NUM_LAYERS_PER_BLOCK,
+                          cfg.MODEL.GROWTH_RATE,
+                          bc_mode=True,
+                          name="FCN-DenseNet")
+    elif cfg.BACKBONE == "UNet":
+        net = UNet(cfg.UNET.INIT_CHANNELS,
+                   cfg.UNET.NUM_DOWN_SAMPLE,
+                   cfg.UNET.NUM_CONV_PER_LAYER,
+                   name="UNet")
+    else:
+        raise ValueError("Un supported backbone: {:s}".format(cfg.BACKBONE))
+
     # define output directory
     output_dir = osp.join(cfg.SRC_DIR, cfg.OUTPUT_DIR, cfg.TAG)
     if not osp.exists(output_dir):

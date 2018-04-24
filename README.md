@@ -46,6 +46,7 @@ A tensorflow implementation of densenet with FCN for medical image segmentation
 
 
 ## Some Experience
-1. Large weight decay (for example 1.0) will impede network to learn image features.
-2. Dropout layer in decoder stage(upconv layers) will lead to white noise in prediction.
-3. Large learning rate will lead to `Nan`
+1. Large weight decay (for example 1.0) will impede network to learn image features. Actually a general value is 1e-5.
+2. Dropout layer in decoder stage(upconv layers) maybe lead to white noise in prediction.
+3. Large learning rate maybe lead to `Nan`
+4. Without **batch normalization**, U-Net(I guess it is the same with other fcn-like ANNs) hardly converges(i.e. learn features) when using CT images.
