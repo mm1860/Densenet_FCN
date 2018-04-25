@@ -9,13 +9,13 @@ def Tiramisu103(init_channels=48):
     return Tiramisu(init_channels, 5, [4, 5, 7, 10, 12, 15], 16, True, 
                     name="Tiramisu103")
 
-def Tiramisu64(init_channels=32):
-    return Tiramisu(init_channels, 4, [4, 4, 6, 8, 12], 16, True,
-                    name="Tiramisu64")
+def Tiramisu67(init_channels=48):
+    return Tiramisu(init_channels, 5, [5, 5, 5, 5, 5, 5], 16, True,
+                    name="Tiramisu67")
 
-def Tiramisu56(init_channels=32):
-    return Tiramisu(init_channels, 4, [4, 4, 6, 6, 8], 16, True,
-                    name="Tiramisu56")
+def Tiramisu56(init_channels=48):
+    return Tiramisu(init_channels, 5, [4, 4, 4, 4, 4, 4], 12, True,
+                    name="Tiramisu57")
 
 class Tiramisu(networks.Networks):
     """ Densenet for sementic segmentation
@@ -220,10 +220,12 @@ class Tiramisu(networks.Networks):
 
 if __name__ == "__main__":
     # check network architecture
-    net = Tiramisu103()
+    #net = Tiramisu56()
+    net = Tiramisu67()
+    #net = Tiramisu103()
     sess = tf.Session()
     with sess.graph.as_default():
         net.create_architecture("TRAIN")
     print(net)
-    writer = tf.summary.FileWriter("./", sess.graph)
-    writer.close()
+    #writer = tf.summary.FileWriter("./", sess.graph)
+    #writer.close()

@@ -37,6 +37,9 @@ __C.PRED_TAG = "default"
 # we use only one logger in the whole project
 __C.LOGGER = "MainLogger"
 
+# network to use
+__C.BACKBONE = "FC-Densenet"
+
 # /////////////////////////////////////////////////////////////////
 __C.IMG = edict()
 
@@ -82,6 +85,9 @@ __C.TRAIN = edict()
 
 # batch size for training
 __C.TRAIN.BS = 64
+
+# update options
+__C.TRAIN.UPDATE_OPS = False
 
 # dispaly step
 __C.TRAIN.DISPLAY = 200
@@ -162,6 +168,7 @@ __C.TEST.BS_3D = 1
 __C.TEST.ITER = __C.TRAIN.MAX_ITERS
 
 # /////////////////////////////////////////////////////////////////
+# model settings for FC-Densenet
 __C.MODEL = edict()
 
 # activation function:
@@ -207,6 +214,18 @@ __C.MODEL.THRESHOLD = 0.5
 __C.MODEL.WEIGHT_INITIALIZER = "trunc_norm"
 
 # //////////////////////////////////////////////////////////////////
+__C.UNET = edict()
+
+# initial channels
+__C.UNET.INIT_CHANNELS = 64
+
+# number of down samples
+__C.UNET.NUM_DOWN_SAMPLE = 4
+
+# number of conv per layer
+__C.UNET.NUM_CONV_PER_LAYER = [2]
+
+# //////////////////////////////////////////////////////////////////
 __C.UDN = edict()
 
 # compression
@@ -214,6 +233,18 @@ __C.UDN.THETA = 1.0
 
 # use dropout or not
 __C.UDN.USE_DROPOUT = False
+
+# initial channels
+__C.UDN.INIT_CHANNELS = 48
+
+# number of blocks
+__C.UDN.NUM_BLOCKS = 4
+
+# number of layers per block
+__C.UDN.NUM_LAYERS_PER_BLOCK = [4]
+
+# growth rate
+__C.UDN.GROWTH_RATE = 16
 
 # //////////////////////////////////////////////////////////////////
 __C.OPTIMIZER = edict()
