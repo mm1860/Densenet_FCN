@@ -17,6 +17,10 @@ def Tiramisu56(init_channels=48):
     return Tiramisu(init_channels, 5, [4, 4, 4, 4, 4, 4], 12, True,
                     name="Tiramisu57")
 
+def Tiramisu70(init_channels=48):
+    return Tiramisu(init_channels, 4, [4, 4, 6, 10, 12], 16, True,
+                    name="Tiramisu87")
+
 class Tiramisu(networks.Networks):
     """ Densenet for sementic segmentation
 
@@ -221,7 +225,7 @@ class Tiramisu(networks.Networks):
 if __name__ == "__main__":
     # check network architecture
     #net = Tiramisu56()
-    net = Tiramisu67()
+    net = Tiramisu70()
     #net = Tiramisu103()
     sess = tf.Session()
     with sess.graph.as_default():
