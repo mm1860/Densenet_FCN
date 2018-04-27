@@ -9,6 +9,7 @@ import tensorflow as tf
 from config import cfg, update_cfg
 from fcn import FC_DenseNet
 from unet import UNet
+import udn
 from solver import test_model_2D, test_model_3D
 from utils.logger import create_logger
 

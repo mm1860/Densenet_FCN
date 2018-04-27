@@ -17,9 +17,9 @@ def Tiramisu56(init_channels=48):
     return Tiramisu(init_channels, 5, [4, 4, 4, 4, 4, 4], 12, True,
                     name="Tiramisu57")
 
-def Tiramisu70(init_channels=48):
-    return Tiramisu(init_channels, 4, [4, 4, 6, 10, 12], 16, True,
-                    name="Tiramisu87")
+def Tiramisu68(init_channels=48):
+    return Tiramisu(init_channels, 4, [4, 4, 6, 10, 10], 16, True,
+                    name="Tiramisu68")
 
 class Tiramisu(networks.Networks):
     """ Densenet for sementic segmentation

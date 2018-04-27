@@ -20,6 +20,8 @@ def show_a_pred(origin, mask, pred):
 def show_all_preds(pred_dir, data_dir):
     preds = glob(osp.join(pred_dir, "*"))
     for pred_file in preds:
+        if "P" in pred_file:
+            continue
         basename = osp.basename(pred_file)
         # read pred
         pred = cv2.imread(pred_file, cv2.IMREAD_GRAYSCALE)
@@ -33,6 +35,6 @@ def show_all_preds(pred_dir, data_dir):
         show_a_pred(liver, mask, pred)
 
 if __name__ == "__main__":
-    pred_dir = osp.join(osp.dirname(__file__), "..", "prediction", "default_bin")
-    data_dir = "C:/DataSet/LiverQL/Liver_2017_test"
+    pred_dir = osp.join(osp.dirname(__file__), "..", "prediction", "unet")
+    data_dir = "D:/DataSet/LiverQL/Liver_2018_test"
     show_all_preds(pred_dir, data_dir)
