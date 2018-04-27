@@ -7,6 +7,7 @@ from pprint import pprint
 from config import cfg, update_cfg
 from fcn import FC_DenseNet
 from unet import UNet
+import udn
 from solver import train_model
 from utils.logger import create_logger
 
@@ -53,6 +54,13 @@ if __name__ == "__main__":
                    cfg.UNET.NUM_DOWN_SAMPLE,
                    cfg.UNET.NUM_CONV_PER_LAYER,
                    name="UNet")
+    elif cfg.BACKBONE == "UDN":
+        net = udn.Tiramisu(cfg.UDN.INIT_CHANNELS,
+                           cfg.UDN.NUM_BLOCKS,
+                           cfg.UDN.NUM_LAYERS_PER_BLOCK,
+                           cfg.UDN.GROWTH_RATE,
+                           bc_mode=True,
+                           name="UDNet")
     else:
         raise ValueError("Un supported backbone: {:s}".format(cfg.BACKBONE))
 

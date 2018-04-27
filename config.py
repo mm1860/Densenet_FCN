@@ -226,6 +226,27 @@ __C.UNET.NUM_DOWN_SAMPLE = 4
 __C.UNET.NUM_CONV_PER_LAYER = [2]
 
 # //////////////////////////////////////////////////////////////////
+__C.UDN = edict()
+
+# compression
+__C.UDN.THETA = 1.0
+
+# use dropout or not
+__C.UDN.USE_DROPOUT = False
+
+# initial channels
+__C.UDN.INIT_CHANNELS = 48
+
+# number of blocks
+__C.UDN.NUM_BLOCKS = 4
+
+# number of layers per block
+__C.UDN.NUM_LAYERS_PER_BLOCK = [4]
+
+# growth rate
+__C.UDN.GROWTH_RATE = 16
+
+# //////////////////////////////////////////////////////////////////
 __C.OPTIMIZER = edict()
 
 # optimizer method
