@@ -36,9 +36,5 @@ def show_all_preds(pred_dir, data_dir):
 
 if __name__ == "__main__":
     pred_dir = osp.join(osp.dirname(__file__), "..", "prediction", "unet")
-<<<<<<< HEAD
-    data_dir = "D:/DataSet/LiverQL/Liver_2017_test"
-=======
     data_dir = "D:/DataSet/LiverQL/Liver_2018_test"
->>>>>>> udn
     show_all_preds(pred_dir, data_dir)

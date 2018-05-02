@@ -192,11 +192,21 @@ __C.MODEL.INIT_CHANNELS = 24
 # number of dense blocks
 __C.MODEL.BLOCKS = 3
 
+# normalization function:
+#   batch_norm
+#   instance_norm
+#   layer_norm
+__C.MODEL.NORMALIZATION = "batch_norm"
+
 # number of layers per block
 __C.MODEL.NUM_LAYERS_PER_BLOCK = [12]
 
 # growth rat
 __C.MODEL.GROWTH_RATE = 12
+
+# skip connection
+__C.MODEL.SKIP_CONNECT = False
+__C.MODEL.SKIP_CONNECT_V2 = False
 
 # compression
 __C.MODEL.THETA = 0.5

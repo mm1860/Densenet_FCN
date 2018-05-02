@@ -40,24 +40,38 @@ class FC_DenseNet(Networks):
                             activation_fn=None) as scope:
             return scope
 
-    @staticmethod
-    def _unit_layer(tensor_in:tf.Tensor, out_channels, kernel_size, name, keep_prob=1.0, training=True):
+    def _activation(self):
+        if cfg.MODEL.ACTIVATION == "relu":
+            activation = tf.nn.relu
+        elif cfg.MODEL.ACTIVATION == "prelu":
+            activation = networks.prelu
+        elif cfg.MODEL.ACTIVATION == "leaky_relu":
+            activation = tf.nn.leaky_relu
+        else:
+            raise ValueError("Unsupported activation function: %s" % cfg.MODEL.ACTIVATION)
+
+        return activation
+
+    def _normalization(self, tensor_in, training=True):
+        if cfg.MODEL.NORMALIZATION == "batch_norm":
+            # batch_norm need UPDATE_OPS
+            tensor_out = slim.batch_norm(tensor_in, scale=True, is_training=training, activation_fn=self._activation())
+        elif cfg.MODEL.NORMALIZATION == "instance_norm":
+            tensor_out = slim.instance_norm(tensor_in, trainable=training, activation_fn=self._activation())
+        elif cfg.MODEL.NORMALIZATION == "layer_norm":
+            tensor_out = slim.layer_norm(tensor_in, trainable=training, activation_fn=self._activation())
+        else:
+            raise ValueError("Unsuppoerted normalization function: %s" % cfg.MODEL.NORMALIZATION)
+
+        return tensor_out
+
+    def _unit_layer(self, tensor_in:tf.Tensor, out_channels, kernel_size, name, keep_prob=1.0, training=True):
         """ A simple bn-relu-conv implementation
         """
         if isinstance(out_channels, float):
             out_channels = int(tensor_in.shape.as_list()[-1] * out_channels)
         with tf.variable_scope(name):
-            # batch_norm need UPDATE_OPS
-            if cfg.MODEL.ACTIVATION == "relu":
-                activation = tf.nn.relu
-            elif cfg.MODEL.ACTIVATION == "prelu":
-                activation = prelu
-            elif cfg.MODEL.ACTIVATION == "leaky_relu":
-                activation = tf.nn.leaky_relu
-            else:
-                raise ValueError("Unsupported activation function: %s" % cfg.MODEL.ACTIVATION)
-            
-            tensor_out = slim.batch_norm(tensor_in, scale=True, is_training=training, activation_fn=activation)
+            tensor_out = self._normalization(tensor_in, training)
             tensor_out = slim.conv2d(tensor_out, out_channels, [kernel_size]*2)
             tensor_out = slim.dropout(tensor_out, keep_prob)
             
@@ -85,6 +99,8 @@ class FC_DenseNet(Networks):
                 tensor_out = slim.repeat(tensor_out, self._num_layers_per_block[i], self._internal_layer,
                                         self._growth_rate, training, self._bc_mode)
                 self._act_summaries.append(tensor_out)
+                if cfg.MODEL.SKIP_CONNECT and i < self._num_blocks - 1:
+                    self._layers["DenseBlock%d" % (i + 1)] = tensor_out
                 if i < self._num_blocks - 1:
                     tensor_out = self._transition_layer(tensor_out, cfg.MODEL.THETA, training=training)
         return tensor_out
@@ -102,17 +118,9 @@ class FC_DenseNet(Networks):
         with tf.variable_scope(name, self._name, reuse=reuse):
             # First convolution
             with tf.variable_scope("FirstConv"):
-                if cfg.MODEL.ACTIVATION == "relu":
-                    activation = tf.nn.relu
-                elif cfg.MODEL.ACTIVATION == "prelu":
-                    activation = prelu
-                elif cfg.MODEL.ACTIVATION == "leaky_relu":
-                    activation = tf.nn.leaky_relu
-                else:
-                    raise ValueError("Unsupported activation function: %s" % cfg.MODEL.ACTIVATION)
-
                 first_conv = slim.conv2d(self._image, self._init_channels, [3, 3])
-                first_conv = slim.batch_norm(first_conv, scale=True, is_training=is_training, activation_fn=activation)
+                first_conv = self._normalization(first_conv, is_training)
+                self._layers["DenseBlock0"] = first_conv
                 first_conv = slim.max_pool2d(first_conv, [2, 2])
             self._act_summaries.append(first_conv)
             
@@ -124,6 +132,9 @@ class FC_DenseNet(Networks):
                 channels = tensor_out.get_shape()[-1]
                 for i in range(cfg.MODEL.BLOCKS):
                     tensor_out = slim.conv2d_transpose(tensor_out, channels, [2, 2], 2, scope="DeconvLayer{:d}".format(i + 1))
+                    if cfg.MODEL.SKIP_CONNECT:
+                        if cfg.MODEL.SKIP_CONNECT_V2 or i < self._num_blocks - 1:
+                            tensor_out = tf.concat((self._layers["DenseBlock%d" % (self._num_blocks - 1 - i)], tensor_out), axis=-1)
                     channels = channels // 2
                     tensor_out = self._unit_layer(tensor_out, channels, 3, "UnitLayer{:d}".format(i + 1), 
                                                   training=is_training)
