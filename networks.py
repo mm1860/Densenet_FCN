@@ -214,7 +214,7 @@ class Networks(object):
             pred = False
         else:
             raise ValueError("Wrong validation map type ({:s})."
-                             " Please choice from [probability, binary].".format(cfg.VAL.MAP))
+                             " Please choice from [probability, binary].".format(cfg.TRAIN.MAP))
         utils.smart_cond(pred, self._add_2D_metries_with_prob, self._add_2D_metries_with_bin, "Metrics2D")
 
         self._add_summaries()

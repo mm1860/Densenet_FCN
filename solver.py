@@ -48,6 +48,8 @@ class SolverWrapper(object):
             lr = tf.Variable(cfg.TRAIN.LR, trainable=False)
             if cfg.OPTIMIZER.METHOD == "adam":
                 optimizer = tf.train.AdamOptimizer(lr, **cfg.OPTIMIZER.ADAM.ARGS)
+            elif cfg.OPTIMIZER.METHOD == "momentum":
+                optimizer = tf.train.MomentumOptimizer(lr, **cfg.OPTIMIZER.MOMENTUM.ARGS)
             else:
                 raise ValueError("Not supported optimizer")
             #optimizer = tf.train.MomentumOptimizer(lr, cfg.TRAIN.MOMENTUM)
@@ -235,7 +237,7 @@ class SolverWrapper(object):
             timer.tic()
             train_batch = next(self.dataloader)
             now = time.time()
-            if iter == 1 or now - last_summary_time > cfg.TRAIN.SUMMARY_INTERVAL:
+            if now - last_summary_time > cfg.TRAIN.SUMMARY_INTERVAL:
                 loss, cross_entropy, dice, voe, vd, summary = self.net.train_step(
                     sess, train_batch, train_op, cfg.TRAIN.KEEP_PROB, with_summary=True)
                 self.writer.add_summary(summary, float(iter))
@@ -465,7 +467,7 @@ def test_model_3D(sess, net:FC_DenseNet, test_set, test_path):
                                    connectivity=3)
             for key, val in metrics_3D.items():
                 metrics[key].append(val)
-            info = "mean Dice: {:.3f}\n" + \
+            info = "batch Dice: {:.3f}\n" + \
                    " " * 23 + ">>> batch VOE:  {:.3f}\n" + \
                    " " * 23 + ">>> batch VD:   {:.3f}\n" + \
                    " " * 23 + ">>> batch ASD:  {:.3f}\n" + \

@@ -266,6 +266,10 @@ __C.OPTIMIZER.METHOD = "adam"
 __C.OPTIMIZER.ADAM = edict()
 __C.OPTIMIZER.ADAM.ARGS = {"beta1": 0.9, "beta2": 0.99}
 
+# momentum parameters
+__C.OPTIMIZER.MOMENTUM = edict()
+__C.OPTIMIZER.MOMENTUM.ARGS = {"momentum": 0.9}
+
 # ///////////////////////////////////////////////////////////////////
 
 def merge_cfg(old_cfg, new_cfg):
