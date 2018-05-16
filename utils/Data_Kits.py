@@ -5,17 +5,34 @@ import os.path as osp
 import cv2
 import re
 import numpy as np
+import skimage.measure as measure
 
-def show_a_pred(image, mask, pred, save_path=None, alpha=0.3):
+def show_a_pred(image, mask, pred, save_path=None, contour=True, alpha=0.3):
     fig = plt.figure()
     fig.set_size_inches((12, 6))
 
-    image_mask = np.repeat(image[:,:,np.newaxis], 3, axis=2)
-    preded = np.where(pred > 125)
-    image_mask[preded[0], preded[1]] = (1 - alpha) * image_mask[preded[0], preded[1]] + alpha * np.array([0, 255, 0])
-    masked = np.where(mask > 0)
-    image_mask[masked[0], masked[1]] = (1 - alpha * 1.5) * image_mask[masked[0], masked[1]] + alpha * 1.5 * np.array([255, 0, 0])
-    images = [image, image_mask]
+    if not contour: # mask
+        image_mask = np.repeat(image[:,:,np.newaxis], 3, axis=2)
+        preded = np.where(pred > 125)
+        image_mask[preded[0], preded[1]] = (1 - alpha) * image_mask[preded[0], preded[1]] + alpha * np.array([0, 255, 0])
+        masked = np.where(mask > 0)
+        image_mask[masked[0], masked[1]] = (1 - alpha * 1.5) * image_mask[masked[0], masked[1]] + alpha * 1.5 * np.array([255, 0, 0])
+    else:   # contour
+        image_pred = np.repeat(image[:,:,np.newaxis], 3, axis=2)
+        pred_contours = measure.find_contours(pred, 128)
+        for cont in pred_contours:
+            cont = cont.astype(np.int32)
+            image_pred[cont[:,0], cont[:,1]] = np.array([0, 255, 0])
+        image_mask = np.repeat(image[:,:,np.newaxis], 3, axis=2)
+        masked = mask.copy()
+        masked[masked > -500] = 255
+        masked[masked < -500] = 0
+        mask_contours = measure.find_contours(masked, 128)
+        for cont in mask_contours:
+            cont = cont.astype(np.int32)
+            image_mask[cont[:,0], cont[:,1]] = np.array([255, 0, 0])
+
+    images = [image_mask, image_pred]
     
     last = 0.0
     for i, w in enumerate(np.linspace(0, 1, 2, endpoint=False)):
@@ -30,7 +47,7 @@ def show_a_pred(image, mask, pred, save_path=None, alpha=0.3):
         plt.show()
     plt.close()
 
-def show_all_preds(pred_dir, data_dir):
+def show_all_preds(pred_dir, data_dir, save=False):
     preds = glob(osp.join(pred_dir, "*"))
     for pred_file in preds:
         if "R" in pred_file:
@@ -47,7 +64,10 @@ def show_all_preds(pred_dir, data_dir):
         mask_file = osp.join(data_dir, "mask", basename.replace("_p_", "_m_").replace(".jpg", ".mhd"))
         _, mask = mhd_reader(mask_file)
 
-        save_path = liver_file.replace("liver", "segmentation").replace("_o_", "-").replace(".mhd", ".jpg")
+        if save:
+            save_path = liver_file.replace("liver", "segmentation").replace("_o_", "-").replace(".mhd", ".jpg")
+        else:
+            save_path = None
         show_a_pred(liver, mask, pred, save_path)
 
 def parse_log_2D(filepath):
@@ -96,15 +116,15 @@ def parse_log_3D(filepath):
 
 if __name__ == "__main__":
     if False:
-        pred_dir = osp.join(osp.dirname(__file__), "..", "prediction", "db_mv1")
+        pred_dir = osp.join(osp.dirname(__file__), "..", "prediction", "dice_lr")
         data_dir = "C:/DataSet/LiverQL/Liver_2017_test"
         show_all_preds(pred_dir, data_dir)
 
     if True:
-        filepath = "C:/documents/MLearning/MultiOrganDetection/core/Densenet_FCN/logs/20180425221600_test_unet_default_iter_250000"
+        filepath = "C:/documents/MLearning/MultiOrganDetection/core/Densenet_FCN/logs/20180429104523_test_skipv2_default_iter_200000"
         parse_log_2D(filepath)
         print()
-        filepath = "C:/documents/MLearning/MultiOrganDetection/core/Densenet_FCN/logs/20180425222611_test_unet_default_iter_250000"
+        filepath = "C:/documents/MLearning/MultiOrganDetection/core/Densenet_FCN/logs/20180429104948_test_skipv2_default_iter_200000"
         parse_log_3D(filepath)
     
     if False:

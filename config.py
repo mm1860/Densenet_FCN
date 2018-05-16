@@ -96,6 +96,21 @@ __C.TRAIN.DISPLAY = 200
 # while in decoder stage we disable dropout
 __C.TRAIN.KEEP_PROB = 0.7
 
+# loss function:
+#   ce: cross entropy
+#   fl: focal loss
+#   dice: dice coefficient
+__C.TRAIN.LOSS = "ce"
+
+# weight of loss function
+__C.TRAIN.LOSS_WEIGHT = 1.0
+
+# focal loss gamma
+__C.TRAIN.LOSS_GAMMA = 2.0
+
+# focal loss alpha
+__C.TRAIN.LOSS_ALPHA = None
+
 # learning rate
 __C.TRAIN.LR = 0.01
 
@@ -180,17 +195,14 @@ __C.MODEL.ACTIVATION = "relu"
 # bias decay or not
 __C.MODEL.BIAS_DECAY = False
 
-# weight decay
-__C.MODEL.WEIGHT_DECAY = 1e-3
+# number of dense blocks
+__C.MODEL.BLOCKS = 3
 
-# cross entropy
-__C.MODEL.CROSS_ENTROPY = 10.0
+# growth rat
+__C.MODEL.GROWTH_RATE = 12
 
 # output channels of the first convolutional layer
 __C.MODEL.INIT_CHANNELS = 24
-
-# number of dense blocks
-__C.MODEL.BLOCKS = 3
 
 # normalization function:
 #   batch_norm
@@ -201,9 +213,6 @@ __C.MODEL.NORMALIZATION = "batch_norm"
 # number of layers per block
 __C.MODEL.NUM_LAYERS_PER_BLOCK = [12]
 
-# growth rat
-__C.MODEL.GROWTH_RATE = 12
-
 # skip connection
 __C.MODEL.SKIP_CONNECT = False
 __C.MODEL.SKIP_CONNECT_V2 = False
@@ -211,11 +220,14 @@ __C.MODEL.SKIP_CONNECT_V2 = False
 # compression
 __C.MODEL.THETA = 0.5
 
+# threshold of final segmentation
+__C.MODEL.THRESHOLD = 0.5
+
 # use bias or not
 __C.MODEL.USE_BIAS = False
 
-# threshold of final segmentation
-__C.MODEL.THRESHOLD = 0.5
+# weight decay
+__C.MODEL.WEIGHT_DECAY = 1e-3
 
 # weight initializer
 # * trunc_norm

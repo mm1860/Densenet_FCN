@@ -18,7 +18,7 @@ def parse_args():
     parser.add_argument("--mode", dest="mode", default="2D", type=str, 
                         choices=["2D", "3D"],
                         help="test mode (2D/3D image, default is 2D)")
-    parser.add_argument("--best", dest="best", default=False, type=bool,
+    parser.add_argument("--best", dest="best", default="True", type=str,
                         help="use the best model or not, if not, cfg.TEST.ITER must be provided")
     parser.add_argument("--cfg", dest="cfg_file", default=None, type=str,
                         help="extra configuration (it will cover default config in config.py)")
@@ -47,7 +47,7 @@ if __name__ == '__main__':
         pprint(cfg, handler.stream)
 
     model_path = osp.join(cfg.SRC_DIR, cfg.OUTPUT_DIR, cfg.TAG)
-    if args.best:
+    if args.best.lower() not in ["false", "0"]:
         model_file = osp.join(model_path, "{:s}_best.ckpt".format(cfg.PREFIX))
     else:
         model_file = osp.join(model_path, "{:s}_iter_{:d}.ckpt".format(cfg.PREFIX, cfg.TEST.ITER))

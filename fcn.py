@@ -35,7 +35,7 @@ class FC_DenseNet(Networks):
         self._bc_mode = bc_mode
         super(FC_DenseNet, self).__init__()
  
-    def _net_arg_scope(self):
+    def _net_arg_scope(self, training=True):
         with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
                             activation_fn=None) as scope:
             return scope

@@ -149,18 +149,51 @@ class Networks(object):
     def _add_2D_metries_with_bin(self):
         self._add_2D_metries(self._layers["Binary_Pred"], self._mask)
 
+    def _sparse_softmax_focal_loss(self, _sentinel=None, labels=None, logits=None, alpha=None, gamma=2):
+        n_classes = logits.get_shape()[-1]
+        label_shape = tf.shape(labels)
+        label_size = tf.size(labels)
+
+        labels = tf.reshape(labels, (label_size,))
+        labels = tf.one_hot(labels, n_classes)
+        logits_v1 = tf.reshape(logits, (label_size, 1, n_classes))
+        logits_v2 = tf.reshape(logits, (label_size, n_classes, 1))
+
+        one_over_pi = tf.reduce_sum(tf.exp(logits_v1 - logits_v2), axis=-1)
+
+        if not alpha:
+            alpha = 1.0
+        loss = alpha * (1 - 1/one_over_pi) ** gamma * labels * tf.log(one_over_pi)
+
+        return tf.reshape(tf.reduce_sum(loss, axis=-1), label_shape)
+
+    def _sparse_softmax_cross_entropy(self, _sentinel=None, labels=None, logits=None):
+        if cfg.TRAIN.LOSS.lower() == "ce":
+            weights = 1.0
+        elif cfg.TRAIN.LOSS.lower() == "fl":
+            n_classes = logits.get_shape()[-1]
+            one_hot_labels = tf.one_hot(labels, n_classes)
+            softmax_p = tf.nn.softmax(logits)
+            weights = tf.reduce_sum((1 - softmax_p) ** cfg.TRAIN.LOSS_GAMMA * one_hot_labels, axis=-1, name="loss_weigits")
+            self._act_summaries.append(weights)
+        elif cfg.TRAIN.LOSS.lower() == "dice":
+            loss = 1 - self._metric_dice(self._layers["Prediction"], labels, eps=1e-8)
+            return loss
+        else:
+            raise ValueError("Not supported loss function: %s" % cfg.TRAIN.LOSS)
+
+        loss = tf.losses.sparse_softmax_cross_entropy(labels, logits, weights=weights)
+
+        return loss
+
     def _add_losses(self, name=None):
         with tf.variable_scope(name, "Loss"):
-            labels = tf.squeeze(self._mask, axis=[-1])
+            labels = self._mask
             logits = self._layers["logits"]
-            cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels, logits) * cfg.MODEL.CROSS_ENTROPY
-            #cross_entropy = tf.losses.sigmoid_cross_entropy(tf.one_hot(labels, 2), logits) * cfg.MODEL.CROSS_ENTROPY
+            cross_entropy = self._sparse_softmax_cross_entropy(labels=labels, logits=logits) * cfg.TRAIN.LOSS_WEIGHT
             self._losses["cross_entropy"] = cross_entropy
 
-            if cfg.MODEL.WEIGHT_DECAY != 0.0:
-                regularization_losses = tf.add_n(tf.losses.get_regularization_losses(), "Regu")
-            else:
-                regularization_losses = 0.0
+            regularization_losses = 0.0 if cfg.MODEL.WEIGHT_DECAY == 0.0 else tf.add_n(tf.losses.get_regularization_losses(), "Regu")
             self._losses["total_loss"] = cross_entropy + regularization_losses
 
         return cross_entropy
@@ -404,16 +437,22 @@ def metric_3D(logits3D, labels3D, surface=False, eps=1e-6, **kwargs):
     return metrics_3D
 
 if __name__ == "__main__":
-    # test metric_3D() function
-    from utils.Liver_Kits import mhd_reader
-    import matplotlib.pyplot as plt
-    mhd_file = "D:/DataSet/LiverQL/3Dircadb1_mhd/mask/A001_m.mhd"
-    meta, mask = mhd_reader(mhd_file)
-    mask = (mask / np.max(mask)).astype(np.int32)
-    disc = mph.generate_binary_structure(mask.ndim, 3)
-    logits = mph.binary_erosion(mask, disc, 2)
+    if False:
+        # test metric_3D() function
+        from utils.Liver_Kits import mhd_reader
+        import matplotlib.pyplot as plt
+        mhd_file = "D:/DataSet/LiverQL/3Dircadb1_mhd/mask/A001_m.mhd"
+        meta, mask = mhd_reader(mhd_file)
+        mask = (mask / np.max(mask)).astype(np.int32)
+        disc = mph.generate_binary_structure(mask.ndim, 3)
+        logits = mph.binary_erosion(mask, disc, 2)
+
+        metrics = metric_3D(logits, mask, sample=[1, 1, 1], connectivity=3)
+        for k, v in metrics.items():
+            print(k, v)
     
-    metrics = metric_3D(logits, mask, sample=[1, 1, 1], connectivity=3)
-    for k, v in metrics.items():
-        print(k, v)
-    
+    if True:
+        net = Networks()
+        labels = tf.constant(np.arange(50).reshape(2, 5, 5), tf.int32)
+        logits = tf.constant(np.arange(100).reshape(2, 5, 5, 2), tf.float32)
+        net._sparse_softmax_cross_entropy(labels=labels, logits=logits)
