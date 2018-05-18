@@ -38,7 +38,7 @@ class DataLoader(object):
         self._cur = 0
 
     def _next_minibatch_inds(self):
-        if self._cur + self.batch_size >= self.num_images:
+        if self._cur + self.batch_size > self.num_images:
             if self._once:
                 raise StopIteration()
             self._shuffle_database_inds()
