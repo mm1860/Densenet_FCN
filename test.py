@@ -42,6 +42,9 @@ if __name__ == '__main__':
     logfile = osp.join(logdir, "test_%s_%s_iter_%d" % (cfg.TAG, cfg.PREFIX, cfg.TEST.ITER))
     logger = create_logger(log_file=logfile, withtime=True, propagate=False, name=cfg.LOGGER)
 
+    if cfg.TEST.SAVE_MODEL:
+        cfg.TRAIN.BS = 1
+
     logger.info("Configuration: ")
     for handler in logger.handlers:
         pprint(cfg, handler.stream)
@@ -85,26 +88,29 @@ if __name__ == '__main__':
 
         net.create_architecture("TEST")
 
-        if osp.exists(model_file + ".meta"):
+        if osp.exists(model_file + ".index"):
             logger.info("Loading checkpoint from " + model_file)
             saver = tf.train.Saver()
             saver.restore(sess, model_file)
             logger.info("Model loaded")
+            if cfg.TEST.SAVE_MODEL:
+                saver.save(sess, osp.join(osp.dirname(model_file), "deploy_" + osp.basename(model_file)))
         else:
             raise FileNotFoundError("Invalid model tag or iters! Model file: {:s}".format(model_file))
     
-    if cfg.PRED_TAG != "":
-        test_path = osp.join(cfg.SRC_DIR, cfg.PRED_DIR, cfg.PRED_TAG)
-        if not osp.exists(test_path):
-            os.makedirs(test_path)
-    else:
-        test_path = None
-    
-    if args.mode == "2D":
-        test_model_2D(sess, net, cfg.DATA.TESTSET, test_path)
-    elif args.mode == "3D":
-        test_model_3D(sess, net, cfg.DATA.TESTSET_3D, test_path)
-    else:
-        raise ValueError("Only support 2D and 3D test routine.")
+    if not cfg.TEST.SAVE_MODEL:
+        if cfg.PRED_TAG != "":
+            test_path = osp.join(cfg.SRC_DIR, cfg.PRED_DIR, cfg.PRED_TAG)
+            if not osp.exists(test_path):
+                os.makedirs(test_path)
+        else:
+            test_path = None
+        
+        if args.mode == "2D":
+            test_model_2D(sess, net, cfg.DATA.TESTSET, test_path)
+        elif args.mode == "3D":
+            test_model_3D(sess, net, cfg.DATA.TESTSET_3D, test_path)
+        else:
+            raise ValueError("Only support 2D and 3D test routine.")
 
     sess.close()

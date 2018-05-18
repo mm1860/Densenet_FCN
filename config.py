@@ -182,6 +182,9 @@ __C.TEST.BS_3D = 1
 # test mode, use which iteration of models
 __C.TEST.ITER = __C.TRAIN.MAX_ITERS
 
+# save model for inference with batch size = 1
+__C.TEST.SAVE_MODEL = False
+
 # /////////////////////////////////////////////////////////////////
 # model settings for FC-Densenet
 __C.MODEL = edict()
