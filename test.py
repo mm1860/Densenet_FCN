@@ -43,7 +43,7 @@ if __name__ == '__main__':
     logger = create_logger(log_file=logfile, withtime=True, propagate=False, name=cfg.LOGGER)
 
     if cfg.TEST.SAVE_MODEL:
-        cfg.TRAIN.BS = 1
+        cfg.TRAIN.BS = cfg.TEST.BS_2D
 
     logger.info("Configuration: ")
     for handler in logger.handlers:

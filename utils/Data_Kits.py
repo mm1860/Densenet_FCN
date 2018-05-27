@@ -7,16 +7,17 @@ import re
 import numpy as np
 import skimage.measure as measure
 
-def show_a_pred(image, mask, pred, save_path=None, contour=True, alpha=0.3):
+def show_a_pred(image, mask, pred, save_path=None, contour=True, mask_thresh=-500, alpha=0.3):
     fig = plt.figure()
     fig.set_size_inches((12, 6))
 
     if not contour: # mask
-        image_mask = np.repeat(image[:,:,np.newaxis], 3, axis=2)
+        image_pred = np.repeat(image[:,:,np.newaxis], 3, axis=2)
         preded = np.where(pred > 125)
-        image_mask[preded[0], preded[1]] = (1 - alpha) * image_mask[preded[0], preded[1]] + alpha * np.array([0, 255, 0])
+        image_pred[preded[0], preded[1]] = (1 - alpha) * image_pred[preded[0], preded[1]] + alpha * np.array([255, 255, 0])
+        image_mask = np.repeat(image[:,:,np.newaxis], 3, axis=2)
         masked = np.where(mask > 0)
-        image_mask[masked[0], masked[1]] = (1 - alpha * 1.5) * image_mask[masked[0], masked[1]] + alpha * 1.5 * np.array([255, 0, 0])
+        image_mask[masked[0], masked[1]] = (1 - alpha) * image_mask[masked[0], masked[1]] + alpha * np.array([255, 0, 255])
     else:   # contour
         image_pred = np.repeat(image[:,:,np.newaxis], 3, axis=2)
         pred_contours = measure.find_contours(pred, 128)
@@ -25,8 +26,8 @@ def show_a_pred(image, mask, pred, save_path=None, contour=True, alpha=0.3):
             image_pred[cont[:,0], cont[:,1]] = np.array([0, 255, 0])
         image_mask = np.repeat(image[:,:,np.newaxis], 3, axis=2)
         masked = mask.copy()
-        masked[masked > -500] = 255
-        masked[masked < -500] = 0
+        masked[masked > 0] = 255
+        masked[masked < 0] = 0
         mask_contours = measure.find_contours(masked, 128)
         for cont in mask_contours:
             cont = cont.astype(np.int32)
@@ -47,10 +48,10 @@ def show_a_pred(image, mask, pred, save_path=None, contour=True, alpha=0.3):
         plt.show()
     plt.close()
 
-def show_all_preds(pred_dir, data_dir, save=False):
+def show_all_preds(pred_dir, data_dir, save=False, contour=True, mask_thresh=-500, alpha=0.3, filter=None):
     preds = glob(osp.join(pred_dir, "*"))
     for pred_file in preds:
-        if "R" in pred_file:
+        if filter and filter not in pred_file:
             continue
         basename = osp.basename(pred_file)
         print(basename)
@@ -68,7 +69,31 @@ def show_all_preds(pred_dir, data_dir, save=False):
             save_path = liver_file.replace("liver", "segmentation").replace("_o_", "-").replace(".mhd", ".jpg")
         else:
             save_path = None
-        show_a_pred(liver, mask, pred, save_path)
+        show_a_pred(liver, mask, pred, save_path, contour=contour, mask_thresh=mask_thresh, alpha=alpha)
+
+def show_liver_and_mask(data_dir, case, alpha=0.3):
+    livers = glob(osp.join(data_dir, "liver", case + "*.mhd"))
+
+    for liver_file in livers:
+        print(liver_file)
+        mask_file = liver_file.replace("liver", "mask").replace("_o_", "_m_")
+        _, liver = mhd_reader(liver_file)
+        _, mask = mhd_reader(mask_file)
+        liver = ((np.clip(liver, -80, 170) + 80) / 250.0 * 255).astype(np.uint8)
+        image = np.repeat(liver[:,:,np.newaxis], 3, axis=2)
+
+        fig = plt.figure()
+        fig.set_size_inches((6, 6))
+
+        masked = np.where(mask > 0)
+        image[masked[0], masked[1]] = (1 - alpha) * image[masked[0], masked[1]] + alpha * np.array([255, 255, 0])
+
+        ax = plt.Axes(fig, [0, 0, 1, 1])
+        ax.set_axis_off()
+        fig.add_axes(ax)
+        ax.imshow(image, cmap="gray")
+        plt.show()
+        plt.close()
 
 def parse_log_2D(filepath):
     pattern_Dice = re.compile("batch Dice: (\d\.\d{3})")
@@ -115,12 +140,12 @@ def parse_log_3D(filepath):
 
 
 if __name__ == "__main__":
-    if False:
-        pred_dir = osp.join(osp.dirname(__file__), "..", "prediction", "dice_lr")
-        data_dir = "C:/DataSet/LiverQL/Liver_2017_test"
-        show_all_preds(pred_dir, data_dir)
-
     if True:
+        pred_dir = osp.join(osp.dirname(__file__), "..", "prediction", "temp")
+        data_dir = "D:/DataSet/LiverQL/Liver_2016_train"
+        show_all_preds(pred_dir, data_dir, save=False, contour=False, mask_thresh=0, alpha=0.4, filter="A")
+
+    if False:
         filepath = "C:/documents/MLearning/MultiOrganDetection/core/Densenet_FCN/logs/20180429104523_test_skipv2_default_iter_200000"
         parse_log_2D(filepath)
         print()
@@ -133,3 +158,8 @@ if __name__ == "__main__":
         image = image[:,:]
         plt.imshow(image)
         plt.show()
+
+    if False:
+        data_dir = "D:/DataSet/LiverQL/Liver_2017_train"
+        case = "Q001"
+        show_liver_and_mask(data_dir, case)

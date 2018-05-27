@@ -493,7 +493,7 @@ def test_model_3D(sess, net:FC_DenseNet, test_set, test_path):
 
 
 if __name__ == "__main__":
-    if False:
+    if True:
         # check computation graph
         net = FC_DenseNet(24, 3, 12, 12, bc_mode=True, name="FCN-DenseNet")
         solver = SolverWrapper(net, None, None, "a", "b")  
@@ -504,7 +504,7 @@ if __name__ == "__main__":
         with tf.Session(config=tfconfig) as sess:
             solver._construct_graph(sess)
             solver.writer.close()
-    if True:
+    if False:
         # test save_prediction function
         prediction = np.random.randn(2, 512, 512, 1)
         save_prediction(prediction, "./", ["a.mhd", "b.mhd"])

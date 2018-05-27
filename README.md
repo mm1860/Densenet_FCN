@@ -1,37 +1,152 @@
 # Densenet_FCN
-A tensorflow implementation of densenet with FCN for medical image segmentation
+A tensorflow implementation of densenet with FCN for liver segmentation.
 
-## Still Updating
-|           | 2D Dice   | VOE       | VD        | 3D Dice   | VOE       | VD        | ASD       | RMSD      | MSD      |
-|:----------|:----------|:----------|:----------|:----------|:----------|:----------|:----------|:----------|:---------|
-|First run  |0.853      |23.186     |13.140     |0.931      |12.906     |5.938      |2.987      |7.085      |65.420    |
-|lr         |0.892      |17.645     |8.337      |**0.949**  |9.704      |3.091      |**2.152**  |6.100       |72.357    |
-|xavier     |0.897      |17.052     |8.737      |0.948      |9.791      |**2.944** |2.442       |7.345      |76.233    |
-|skip       |0.894      |17.274     |10.228     |0.946      |10.246     |3.688      |2.979      |8.186      |88,438    |
-|skipv2     |0.900      |16.644     |10.320     |0.943      |10.755     |3.274      |3.190      |8.294      |77.424    |
-|theta-bs2  |0.887      |18.565     |9.655      |0.944      |10.562     |3.840      |2.213      |**5.498**  |65.194     |
-|theta-bs4  |0.900      |16.594     |9.565      |**0.949**  |**9.605** |3.070       |2.427      |7.196      |80.521     |
-|layer_norm |0.900      |16.501     |9.042      |0.947      |10.031     |3.118      |2.547      |7.368      |78.285     |
-|skip-theta |0.894      |17.295     |9.728      |0.944      |10.623     |3.235      |3.130      |8.241      |69.645     |
-|skipv2-theta|0.897     |16.889     |9.340      |0.947      |10.093     |3.230      |2.625      |7.492      |77.897     |
-|minus-v1   |0.894      |17.507     |8.241      |0.948      |9.858      |3.442      |2.153      |6.121      |71.606     |
-|minus-v2   |0.881      |19.259     |9.522      |0.943      |10.773     |3.912      |2.482      |6.639      |70.455     |
-|plus-v1    |0.862      |21.921     |13.183     |0.933      |12.534     |5.742      |3.008      |7.028      |69.811     |
-|plus-v2    |0.891      |17.736     |8.996      |0.943      |10.695     |3.425      |2.693      |6.909      |74.439     |
-|plus-v1-lr |0.879      |19.640     |10.988     |0.937      |11.729     |6.786      |2.583      |5.828      |**49.544** |
-|lr-v3      |0.883      |19.058     |10.216     |0.943      |10.727     |5.614      |2.244      |6.043      |68.533     |
-|skipv2-lr  |0.894      |17.412     |10.390     |0.942      |10.960     |3.713      |3.203      |8.911      |89.274     |
-|minus-plus |0.889      |18.177     |8.384      |0.947      |10.139     |3.106      |2.336      |6.100      |64.032     |
-|minus-plus2|0.888      |18.408     |8.201      |0.948      |9.933      |3.625      |2.244      |6.037      |68.903     |
-|dice       |0.915      |13.890     |9.116      |0.941      |11.011     |4.352      |2.612      |6.822      |99.282     |
-|dice-lr    |0.921      |13.320     |9.352      |0.940      |11.210     |3.935      |3.363      |8.721      |74.324     |
-|dice-skipv2|**0.928**  |**12.238** |**8.225** |0.948      |9.790      |3.238      |2.631      |7.982      |87.247     |
+## Step by step configuration
 
-|unet       |0.908      |15.174     |9.950      |0.946      |10.266     |3.423      |2.636       |7.830      |85.754    |
-|udnet      |0.878      |19.215     |13.365     |0.927      |13.070     |5.354      |3.906       |9.389     |73.603    |
+All the basic configurations of model and training process are listed in `config.py` and managed by `EasyDict`. We define our config parameters as `__C` which is defined in `config.py`. 
 
-## Some Experience
-1. Large weight decay (for example 1.0) will impede network to learn image features. Actually a general value is 1e-5.
-2. Dropout layer in decoder stage(upconv layers) maybe lead to white noise in prediction.
-3. Large learning rate maybe lead to `Nan`
-4. Without **batch normalization**, U-Net(I guess it is the same with other fcn-like ANNs) hardly converges(i.e. learn features) when using CT images.
+**Note:** All the configs maybe reset in an extra file `./config/dice_skipv2.yml` and it will cover the configs in `config.py`. We recommend to write a new `.yml` file for your own configuration instead of modifying `config.py`.
+
+### 1. Prepare Dataset
+
+* Dataset root directory is set as `__C.DATA.ROOT_DIR`. You can specify root path both in windows or linux and the code will identify automatically.
+
+* Then `__C.DATA.TRAINSET`, `__C.DATA.TESTSET` and `__C.DATA.VALSET` should be set as related directories of dataset. Here an example of directory tree is showed below. `liver` directory save all the 2D liver slices while `mask` directory save all the 2D mask slices.
+
+```
+./data
+├─Liver_2017_train
+│  ├─liver
+│  └─mask
+├─Liver_2017_val
+│  ├─liver
+│  └─mask
+├─Liver_2017_test
+│  ├─liver
+│  └─mask
+├─Liver_2017_test_3D
+│  ├─liver
+│  └─mask
+```
+
+* All the liver and mask data is `.mhd` + `.raw` format.
+
+* Set correct window width and level in `__C.IMG.W_WIDTH` and `__C.IMG.W_LEVEL`. 
+
+### 2. Train/Validation/Test and Model parameters
+
+* Please set `__C.TAG` a specify string to identify current model.
+
+* If `__C.PRED_TAG` is not empty, then the segmentation results will be stored.
+
+* `__C.TRAIN.MAX_ITERS`: Total steps
+
+* `__C.MODEL` contains all the `FC-Densenet` parameters such as *growth rate*, *compression rate*.
+
+* `__C.BACKBONE`: We also implement [U-Net](https://arxiv.org/abs/1505.04597) and [Tiramisu](https://arxiv.org/abs/1611.09326) which can also be used as backbone. **You can add your own network by inherit `class Network` which is defined in `networks.py`.**
+
+* Other parameters please reference the description in `config.py`.
+
+### 3. Train
+
+Run the command below to train your model. This code will save the best weights(for validation) during training and the lastest weights. And `dice_skipv2` means the specific config file defined in `./config/`. `0` is the GPU ID you want to use. Only single GPU is supported.
+
+```bash
+bash main.sh train 0 dice_skipv2
+```
+
+### 4. Test
+
+Run the command below to test your model in 2D mode with the best model.
+
+```bash
+bash main.sh test 0 dice_skipv2 2D true
+```
+
+Run the command below to test your model in 3D mode with the lastest model. 3D mode means that run 2D slices and concat them to 3D.
+
+```bash
+bash main.sh test 0 dice_skipv2 3D false
+```
+
+### 5. Metrics
+
+We implement dice metric and other 5 metrics for evaluating segmentation accuracy. [Reference](https://ieeexplore.ieee.org/abstract/document/4781564/)
+
+* Dice coefficient
+
+* VOE
+
+* VD
+
+* ASD
+
+* RMSD
+
+* MSD
+
+## Results
+
+Example of public dataset [3D-Ircadb 01](https://www.ircad.fr/research/3d-ircadb-01/). Left part is label, right part is prediction.
+
+|Liver-heart weak boundary|Isolated region|
+|:-----------------------:|:-------------:|
+|![i1](./images/disp1.png)|![i2](./images/disp2.png)|
+
+|Small region|Gap|
+|:-----------------------:|:-------------:|
+|![i1](./images/disp3.png)|![i2](./images/disp4.png)|
+
+
+## Save/Load Model and Prediction
+
+### 1. Freeze model
+
+Maybe you want to freeze model with different batch size. You can set `__C.TEST.SAVE_MODEL` as `true` just like `./config/dice_skipv2_deploy.yml` and change `__C.TEST.BS_2D` to other number. Then execute test routine:
+
+```bash
+bash main.sh test 0 dice_skipv2_deploy 2D true
+```
+
+it will save an empty model with new batch size. Then you will get three new file:
+
+```
+deploy_default_best.ckpt.data-00000-of-00001
+deploy_default_best.ckpt.index
+deploy_default_best.ckpt.meta
+```
+
+Of course we just need meta graph with new batch size `deploy_default_best.ckpt.meta`. Copy and replace the other two file with real weights:
+
+```bash
+cp default_best.ckpt.data-00000-of-00001 deploy_default_best.ckpt.data-00000-of-00001
+cp default_best.ckpt.index deploy_default_best.ckpt.index
+```
+
+Then we can freeze model `deploy_default_best.ckpt` to `deploy_default_best.pb`. First change the first `if` to `True` in the `__main__` part of `./utils/Model_Kits.py`, then execute 
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python ./utils/Model_Kits.py --model dice_skipv2 --prefix deploy_default
+```
+
+Note that `--model` argument denote the model tag `__C.TAG` while `--prefix` argument denote the model prefix `__C.PREFIX`. Re-generated model has a prefix `deploy_xxxx`.
+
+### 2. Load Model and Predict in Python
+
+Change the first `if` to `False` and the second `if` to `True` in the `__main__` part of `./utils/Model_Kits.py`, then execute 
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python ./utils/Model_Kits.py
+```
+
+For details please read the `segmentation()` function in `./utils/Model_Kits.py`.
+
+### 3. Load Model and Predict in C++
+
+Please make sure you have compile the tensorflow C++ API from source. 
+
+Create a new project `demo` and add `load_graph.cpp` to project, add include files, `tensorflow.lib` to VS configuration and add `tensorflow.dll` to environment variable `PATH`. Then compile and run 
+
+```bash
+demo.exe path/to/xxx.pb xxx.raw1 xxx.raw2 ...
+```

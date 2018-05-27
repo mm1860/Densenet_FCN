@@ -52,7 +52,7 @@ def freeze_model(model_tag, model_prefix="default", **kwargs):
     pb_path = model_dir / (model_name + ".pb")
 
     if not model_path.exists():
-        raise FileNotFoundError("Cannot find model file: {}".format(ckpt))
+        raise FileNotFoundError("Cannot find model file: {}".format(model_path))
 
     print("Freeze model begin!")
     # 1. load model
@@ -98,11 +98,11 @@ def segmentation(model_path, images):
     return preds
 
 if __name__ == "__main__":
-    if False:
+    if True:
         kwargs = vars(parse_args())
         freeze_model(**kwargs)
 
-    if True:
+    if False:
         import matplotlib.pyplot as plt
         from Liver_Kits import mhd_reader
         slice = "D:/DataSet/LiverQL/Liver_2018_test/liver/R071_o_14.mhd"
